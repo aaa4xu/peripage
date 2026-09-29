@@ -1,0 +1,54 @@
+{
+	"version": 1,
+	"width": 384,
+	"height": 115,
+	"layers": [
+		{
+			"type": "image",
+			"x": 0,
+			"y": 0,
+			"width": 384,
+			"height": 115,
+			"src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAABzCAAAAAC03YpgAAABF0lEQVR4nO3TwQ3DQACEwOu/aaeDvBytY4YSQJwLUw7/AqRxgABtHCBAGwf8e4ATZx0gf9BYYN7/2CD/W4X8bx3yv5XI/9Yi/1uN/G898r8Vyf/WJP9blfxvXfK/lcn/1ib/W538j30KIMCTcYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAQK0cYAAbRwgQBsHCNDGAe8PgK/8PADuRYAxAgjQxgECtHGAAFeaD013/jvyu52CAAAAAElFTkSuQmCC"
+		},
+		{
+			"type": "text",
+			"x": 60,
+			"y": 17,
+			"width": 171,
+			"height": 35,
+			"text": "Резисторы",
+			"fontSize": 24,
+			"fontWeight": 700
+		},
+		{
+			"type": "text",
+			"x": 60,
+			"y": 49,
+			"width": 171,
+			"height": 26,
+			"text": "10 кОм · 0,25 Вт",
+			"fontSize": 15,
+			"fontWeight": 500
+		},
+		{
+			"type": "text",
+			"x": 60,
+			"y": 72,
+			"width": 171,
+			"height": 26,
+			"text": "000-014",
+			"fontSize": 15,
+			"fontWeight": 500
+		},
+		{
+			"type": "qr",
+			"x": 236,
+			"y": 8,
+			"size": 99,
+			"text": "HTTPS://HB.JJFF.CLOUD/A/000014",
+			"errorCorrection": "L",
+			"rotation": 270
+		}
+	]
+}
