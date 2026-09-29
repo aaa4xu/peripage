@@ -1,408 +1,413 @@
-# BLE-протокол PeriPage A6_SD V1.22
+# PeriPage A6_SD V1.22 BLE protocol
 
-Документ восстановлен из машинного кода прошивки **A6_SD / V1.22_203dpi /
-NN0000210**, а не из предположения о совместимости с ESC/POS. Дата анализа:
-2026-09-29. Описаны BLE-транспорт, поток команд, ответы, управление печатью и
-доступный через BLE служебный протокол. USB не рассматривается.
+This document was reconstructed from the machine code of the **A6_SD /
+V1.22_203dpi / NN0000210** firmware, rather than assuming ESC/POS compatibility.
+Analysis date: 2026-09-29. It covers the BLE transport, command stream, responses,
+print control, and the maintenance protocol accessible over BLE. USB is out of scope.
 
-Основной результат: известны все **33 распознаваемых кода `10 ff`**, GATT-путь,
-алгоритм кредитов, обычный и сжатый растры, QR-команда и условия формирования
-ответов. Значение некоторых заводских параметров и достижимость отдельных
-состояний остаются неустановленными; они прямо отмечены ниже.
+Main result: all **33 recognized `10 ff` opcodes**, the GATT path, credit algorithm,
+uncompressed and compressed rasters, QR command, and response conditions are known.
+The meaning of some factory parameters and the reachability of certain states
+remain unknown; these are explicitly identified below.
 
-## 1. Источник, границы применимости и обозначения
+## 1. Source, applicability, and notation
 
-| Поле                   | Значение                                                                                                                                               |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Файл                   | `NN0000210_A6_SD_V1.22_203dpi_20260321.bin`                                                                                                            |
-| Размер                 | 80 404 байта                                                                                                                                           |
-| SHA-256                | `2ab46e818ea6a61ebe68eff37c2e15e9b41eb66c527a4076f51b53695c93d424`                                                                                     |
-| Строки сборки          | `Mar 21 2026`, `16:29:06`                                                                                                                              |
-| Архитектура приложения | ARM Thumb, little-endian, M-profile                                                                                                                    |
-| База загрузки          | `0x01020000`                                                                                                                                           |
-| Источник образа        | [Объект, полученный через официальный API PeriPage](https://ailide-no.oss-cn-shenzhen.aliyuncs.com/haiwai/cloud/20260326/aQrWUTaqPA20260326171100.bin) |
+| Field                    | Value                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File                     | `NN0000210_A6_SD_V1.22_203dpi_20260321.bin`                                                                                                             |
+| Size                     | 80,404 bytes                                                                                                                                            |
+| SHA-256                  | `2ab46e818ea6a61ebe68eff37c2e15e9b41eb66c527a4076f51b53695c93d424`                                                                                      |
+| Build strings            | `Mar 21 2026`, `16:29:06`                                                                                                                               |
+| Application architecture | ARM Thumb, little-endian, M-profile                                                                                                                     |
+| Load base                | `0x01020000`                                                                                                                                            |
+| Image source             | [Object retrieved through the official PeriPage API](https://ailide-no.oss-cn-shenzhen.aliyuncs.com/haiwai/cloud/20260326/aQrWUTaqPA20260326171100.bin) |
 
-Образ содержит открытый исполняемый код приложения. Это не полный дамп чипа:
-ROM, сохранённая конфигурация конкретного принтера и некоторые ресурсы находятся
-за пределами файла. Начальные данные RAM восстановлены стартовым декодером:
-297 сжатых байт → 916 байт по адресу `RAM 0x20000`.
+The image contains unencrypted application executable code. It is not a complete
+chip dump: ROM, the individual printer's saved configuration, and some resources
+are outside the file. Initial RAM data was reconstructed with the startup decoder:
+297 compressed bytes → 916 bytes at `RAM 0x20000`.
 
-Ниже `@0x1234` означает **смещение в файле**. Виртуальный адрес инструкции:
-`0x01020000 + 0x1234`; бит 0 Thumb-указателя перед сложением не учитывается.
-Адреса состояния явно помечены `RAM`. Это позволяет проверить выводы по исходному
-образу даже без символов и исследовательских скриптов.
+Below, `@0x1234` means a **file offset**. The virtual instruction address is
+`0x01020000 + 0x1234`; bit 0 of a Thumb pointer is excluded before addition.
+State addresses are explicitly marked `RAM`. This allows the findings to be
+checked against the original image without symbols or research scripts.
 
-Правила записи форматов:
+Format notation:
 
-- Байты команд записаны hex: `10 ff 20 f1`. Числа в обычном тексте десятичные.
-- `u16be`, `u32be` — старший байт первым; `u16le` — младший первым.
-- `n`, `s`, `m` — один байт, если не указано иное.
+- Command bytes are hexadecimal: `10 ff 20 f1`. Numbers in prose are decimal.
+- `u16be`, `u32be` — most significant byte first; `u16le` — least significant byte first.
+- `n`, `s`, and `m` are one byte unless otherwise specified.
 - `OK = 4f 4b`, `ER = 45 52`, `RE = 52 45`, `AA = aa`.
-- «Нет ответа» означает отсутствие ответа самой команды в `FF01`.
-  Транспортные уведомления `FF03` при этом продолжаются.
-- «Сохранение» означает вызов записи конфигурации в flash в коде; физическая
-  успешность записи этим анализом не проверена.
+- “No response” means that the command itself produces no response on `FF01`.
+  Transport notifications on `FF03` continue.
+- “Save” means the code calls a configuration write to flash; this analysis does
+  not verify that the physical write succeeds.
 
-Точные байты, размеры, ветвления и адреса в документе подтверждены кодом.
-Слова «вероятно» и «не установлено» обозначают границу интерпретации.
-Дополнительно выполнено **813 изолированных проверок Thumb-кода в Unicorn**:
-с подменой чтения потока, передачи ответов, периферии и отдельных runtime-функций.
-Это проверка парсеров и преобразований данных, а не эмуляция всего принтера.
-BLE-соединение, реальные датчики, двигатель и печать здесь не испытывались.
+Exact bytes, sizes, branches, and addresses in this document are confirmed by the
+code. “Likely” and “unknown” mark the limits of interpretation. An additional
+**813 isolated Thumb-code checks were run in Unicorn**, replacing stream reads,
+response transmission, peripherals, and selected runtime functions. These check
+parsers and data transformations, rather than emulating the entire printer.
+BLE connections, real sensors, the motor, and printing were not tested here.
 
-## 2. BLE-сервис и каналы
+## 2. BLE service and channels
 
-Полный UUID для короткого `FFxx`: `0000ffxx-0000-1000-8000-00805f9b34fb`.
+The full UUID for a short `FFxx` value is `0000ffxx-0000-1000-8000-00805f9b34fb`.
 
-| UUID   | Свойства в таблице                      | Направление и назначение                             |
+| UUID   | Properties in the table                 | Direction and purpose                                |
 | ------ | --------------------------------------- | ---------------------------------------------------- |
-| `FF00` | Service                                 | Основной сервис приложения                           |
-| `FF01` | Notify (`0x10`)                         | Принтер → клиент: ответы на команды и события печати |
-| `FF02` | Write + Write Without Response (`0x0c`) | Клиент → принтер: байтовый поток                     |
-| `FF03` | Notify (`0x10`)                         | Принтер → клиент: параметры передачи и кредиты       |
+| `FF00` | Service                                 | Main application service                             |
+| `FF01` | Notify (`0x10`)                         | Printer → client: command responses and print events |
+| `FF02` | Write + Write Without Response (`0x0c`) | Client → printer: byte stream                        |
+| `FF03` | Notify (`0x10`)                         | Printer → client: transfer parameters and credits    |
 
-Доказательства: начальные структуры `RAM 0x201ad`, `0x201c4`, `0x201ca`,
-`0x201d0`; регистрация `@0x2292`, `@0x22a2`, `@0x22b2`.
-Возвращённые SDK handles сохраняются в `RAM 0x2019c`, `0x2019a`, `0x2019e`.
-Числовые ATT handles назначаются при регистрации; их нельзя закреплять в клиенте.
+Evidence: initial structures at `RAM 0x201ad`, `0x201c4`, `0x201ca`, and `0x201d0`;
+registration at `@0x2292`, `@0x22a2`, and `@0x22b2`.
+Returned SDK handles are stored at `RAM 0x2019c`, `0x2019a`, and `0x2019e`.
+Numeric ATT handles are assigned during registration and must not be hardcoded in
+the client.
 
-В образе также регистрируются UUID семейства ISSC. Однако разобранный приёмник
-команд `@0x1714` проверяет именно handle `FF02`. Эквивалентность ISSC-канала
-этому протоколу не доказана.
+The image also registers ISSC-family UUIDs. However, the analyzed command receiver
+at `@0x1714` checks specifically for the `FF02` handle. Equivalence of the ISSC
+channel to this protocol has not been established.
 
-### Обнаружение и подписка
+### Discovery and subscription
 
-Инициализация формирует имя вида `PeriPage_%02X%02X_BLE`. В advertising-коде
-`@0x2356` есть поле `05 02 12 18 e7 fe`: список 16-битных UUID `1812`, `FEE7`.
-Наличие `FF00` в GATT не означает, что он объявляется в этом advertising-поле.
-Ответ команды имени `10 ff 30 11` берётся из другой строки и может не содержать
-суффикс `_BLE`.
+Initialization creates a name of the form `PeriPage_%02X%02X_BLE`. The advertising
+code at `@0x2356` contains the field `05 02 12 18 e7 fe`: a list of 16-bit UUIDs
+`1812`, `FEE7`. The presence of `FF00` in GATT does not mean it is announced in this
+advertising field. The response to the name command `10 ff 30 11` comes from a
+different string and may omit the `_BLE` suffix.
 
-Порядок, следующий из кода:
+The sequence implied by the code is:
 
-1. Обнаружить `FF00` и его характеристики.
-2. Включить уведомления `FF01`, чтобы принимать ответы.
-3. Включить уведомления `FF03`; именно это запускает начальную выдачу кредитов.
-4. Разбирать `FF03` отдельно от `FF01`, затем передавать команды в `FF02`.
+1. Discover `FF00` and its characteristics.
+2. Enable `FF01` notifications to receive responses.
+3. Enable `FF03` notifications; this triggers the initial credit grant.
+4. Parse `FF03` separately from `FF01`, then send commands to `FF02`.
 
-Обработчик записи CCCD `FF03` сравнивает handle с `handle(FF03) + 1` и проверяет
-первый байт значения на `01`. При таком событии он отправляет последовательно:
+The `FF03` CCCD write handler compares the handle with `handle(FF03) + 1` and
+checks whether the first value byte is `01`. On this event, it sends the following
+in order:
 
 ```text
 FF03 ← 02 b6 00
 FF03 ← 01 07
 ```
 
-Команда `10 ff fe 01` к выдаче этих уведомлений отношения не имеет. Условия
-pairing/bonding и negotiated ATT MTU по этому пути приложения не установлены.
+The command `10 ff fe 01` does not trigger these notifications. Pairing/bonding
+conditions and the negotiated ATT MTU are not established by this application path.
 
-### Что находится внутри уведомлений
+### Notification contents
 
-Внутри SDK к payload добавляется LE16 handle. Это служебное представление между
-приложением и Bluetooth-контроллером; **эти два байта не входят в payload,
-который получает BLE-клиент**. Отправка ответов: `@0x2570`, `@0x25d8`;
-уведомлений flow control: `@0xb02c`, `@0xb048`, `@0xb068`.
+Inside the SDK, an LE16 handle is added to the payload. This is an internal
+representation between the application and Bluetooth controller; **these two bytes
+are not part of the payload received by the BLE client**. Response transmission:
+`@0x2570`, `@0x25d8`; flow-control notifications: `@0xb02c`, `@0xb048`, `@0xb068`.
 
-SDK-обёртка `@0x1878` отвергает собственные пакеты с payload ≥254 байт.
-Это локальное ограничение функции, а не доказанный размер ATT write/notification.
-В разобранном прикладном отправителе нет универсального разбиения длинных ответов;
-его поведение при малом MTU требует отдельного измерения.
+The SDK wrapper at `@0x1878` rejects its own packets with payloads ≥254 bytes.
+This is a local function limit, not a proven ATT write/notification size.
+The analyzed application sender has no generic fragmentation of long responses;
+its behavior with a small MTU requires separate measurement.
 
-## 3. Кредиты `FF03` и приёмное кольцо
+## 3. `FF03` credits and the receive ring buffer
 
-| Payload    | Декодирование | Установленный смысл                                                                |
-| ---------- | ------------- | ---------------------------------------------------------------------------------- |
-| `01 N`     | `N: u8`       | Число кредитов для записей входного потока; `00` используется при остановке выдачи |
-| `02 nL nH` | `P: u16le`    | Параметр передачи; при подписке `P=182`                                            |
+| Payload    | Decoding   | Established meaning                                                            |
+| ---------- | ---------- | ------------------------------------------------------------------------------ |
+| `01 N`     | `N: u8`    | Number of credits for input-stream writes; `00` is used when grants are paused |
+| `02 nL nH` | `P: u16le` | Transfer parameter; `P=182` on subscription                                    |
 
-У `02` вероятное назначение — допустимый размер порции данных. **Равенство
-ATT MTU, `MTU-3` или жёсткому лимиту FF02 кодом приложения не доказано.**
-Использовать 182 байта можно только с учётом реального лимита BLE-транспорта.
+The likely purpose of `02` is the allowed data chunk size. **The application code
+does not prove that it equals ATT MTU, `MTU-3`, or a hard FF02 limit.** Using
+182-byte chunks also requires respecting the actual BLE transport limit.
 
-У `01` счётчик увеличивается на один **на непустое событие записи FF02**,
-независимо от количества байт в нём. Это не число строк, не число байт и не номер
-последней подтверждённой команды. Возвращаемые кредиты имеют накопительный смысл:
-добавляются к оставшемуся у отправителя бюджету; начальный бюджет в этом образе 7.
-Точная политика клиента при `01 00` должна учитывать уже отправленные записи.
-Консервативная реализация прекращает новые записи до положительной выдачи,
-сохраняя раздельно счётчики отправленного и возвращённого.
+For `01`, the counter increases by one **per nonempty FF02 write event**, regardless
+of its byte count. It is not a row count, byte count, or the index of the last
+acknowledged command. Returned credits are cumulative: add them to the sender's
+remaining budget. The initial budget in this image is 7. The exact client policy
+for `01 00` must account for writes already sent. A conservative implementation
+stops new writes until a positive grant, keeping separate sent and returned counters.
 
-Состояние устройства:
+Device state:
 
-| RAM                  | Назначение                                    |
-| -------------------- | --------------------------------------------- |
-| `0x23d90`            | Байтовое кольцо приёма, 8192 байта            |
-| `0x20064`, `0x20068` | Индексы записи и чтения                       |
-| `0x2006c`            | Число занятых байт                            |
-| `0x20190`            | Флаг `paused`                                 |
-| `0x20192`            | 16-битный счётчик ожидающих возврата кредитов |
+| RAM                  | Purpose                                  |
+| -------------------- | ---------------------------------------- |
+| `0x23d90`            | Byte receive ring buffer, 8192 bytes     |
+| `0x20064`, `0x20068` | Write and read indices                   |
+| `0x2006c`            | Occupied byte count                      |
+| `0x20190`            | `paused` flag                            |
+| `0x20192`            | 16-bit counter of credits pending return |
 
-Алгоритм BLE-ветви (`@0x1714`, `@0x16ec`, `@0x81a8`, `@0xafe8`, `@0xb008`):
+BLE branch algorithm (`@0x1714`, `@0x16ec`, `@0x81a8`, `@0xafe8`, `@0xb008`):
 
 ```text
-при непустом FF02 write:
-    передать payload в байтовое кольцо
+on a nonempty FF02 write:
+    copy the payload into the byte ring buffer
     pending = (pending + 1) mod 65536
     free = 8192 - occupied
-    если free < 3276:
-        отправить FF03: 01 00
+    if free < 3276:
+        send FF03: 01 00
         paused = 1
-        pending сохранить
-    иначе:
-        отправить FF03: 01 (pending mod 256)
+        retain pending
+    else:
+        send FF03: 01 (pending mod 256)
         pending = 0
 
-периодическая проверка:
-    если paused != 0 и free > 4915:
+periodic check:
+    if paused != 0 and free > 4915:
         paused = 0
-        отправить FF03: 01 (pending mod 256)
+        send FF03: 01 (pending mod 256)
         pending = 0
 ```
 
-Границы строгие: при `free=3276` выдача ещё происходит; при `free=4915`
-возобновления ещё нет. Они проверены исполнением кода, как и начальные `182/7`.
+The thresholds are strict: grants still occur at `free=3276`; they do not yet
+resume at `free=4915`. Code execution verified these boundaries and the initial
+`182/7` values.
 
-Особенности реализации, значимые для клиента:
+Implementation details relevant to clients:
 
-- Обычная положительная выдача в обработчике FF02 сама не сбрасывает `paused`.
-  Позднее периодическая ветвь может отправить `01 00` уже с нулевым `pending`.
-  Поэтому это не отдельный формально завершённый протокол `PAUSE/RESUME`.
-- В уведомление помещается только младший байт счётчика. Неограниченно накапливать
-  неподтверждённые записи нельзя.
-- `pending` обнуляется после попытки отправки; результат отправителя игнорируется.
-  Автоматического восстановления потерянного уведомления в этом коде нет.
-- Низкоуровневая функция `@0xa200` прекращает добавлять байты при заполнении
-  **8128**, оставляя 64 байта резерва. Вызывающая `@0xa2b0` продолжает цикл,
-  возвращает успех и не передаёт потерю каждого байта обработчику кредитов.
-  В изолированной проверке запись в заполненное кольцо была засчитана в `pending`,
-  хотя payload не попал в кольцо.
+- A normal positive grant in the FF02 handler does not itself clear `paused`.
+  A later periodic branch may send `01 00` with `pending` already zero.
+  This is therefore not a separate, formally complete `PAUSE/RESUME` protocol.
+- Only the counter's low byte is included in the notification. Unacknowledged
+  writes must not accumulate without a bound.
+- `pending` is cleared after the send attempt; the sender's result is ignored.
+  This code does not automatically recover a lost notification.
+- The low-level function at `@0xa200` stops adding bytes at an occupancy of
+  **8128**, leaving 64 bytes in reserve. Its caller at `@0xa2b0` continues the
+  loop, returns success, and does not report each dropped byte to the credit
+  handler. In an isolated check, a write to a full ring buffer was counted in
+  `pending` even though its payload did not enter the buffer.
 
-Следовательно, кредит подтверждает управление входным потоком. Он **не доказывает
-ни безусловную доставку всех байт при нарушении flow control, ни разбор команды,
-ни завершение печати**. Успех ATT write — ещё один отдельный уровень.
+Thus, a credit acknowledges input flow control. It **does not prove unconditional
+delivery of all bytes when flow control is violated, command parsing, or print
+completion**. A successful ATT write is another separate layer.
 
-## 4. Поток команд, ответы и восстановление после ошибки
+## 4. Command stream, responses, and error recovery
 
-Главный цикл `@0x9764` получает байты через `@0x4350` и направляет их в
-`@0x275c`. Команды могут пересекать границы BLE writes; несколько команд могут
-лежать в одной записи. Префикс повторяется только в начале команды, а не каждой
-порции растра. Escape-последовательности внутри payload изображения не являются
-командами, пока обработчик изображения исправно потребляет этот payload.
+The main loop at `@0x9764` obtains bytes through `@0x4350` and passes them to
+`@0x275c`. Commands can cross BLE write boundaries; multiple commands can share a
+single write. The prefix appears only at the start of a command, not at every
+raster chunk. Escape sequences inside image payloads are not commands while the
+image handler is correctly consuming that payload.
 
-Обычные команды и ответы не имеют общей длины кадра, checksum, request ID или
-эхо opcode. Исключение — служебный протокол в разделе 10. Длина ответа определяется
-конкретным запросом. Большинство строк отправляется без NUL; фиксированные
-ответы могут отличаться, например `10 ff d0` включает завершающий `00`.
+Regular commands and responses have no common frame length, checksum, request ID,
+or echoed opcode. The maintenance protocol in section 10 is the exception.
+Response length depends on the specific query. Most strings are sent without NUL;
+fixed responses can differ, for example `10 ff d0` includes a trailing `00`.
 
-Для запросов в `FF01` нужен один ожидающий ответ за раз. Иначе `OK` настройки
-невозможно однозначно отличить от асинхронного `OK` поиска страницы. Наличие
-BLE notification само по себе не даёт идентификатора породившей её команды.
+Queries on `FF01` require only one pending response at a time. Otherwise, a
+setting's `OK` cannot be unambiguously distinguished from an asynchronous page
+search `OK`. A BLE notification alone does not identify the command that caused it.
 
-### Чтение и тайм-ауты
+### Reads and timeouts
 
-| Функция         | Поведение при отсутствии байта                                                  |
-| --------------- | ------------------------------------------------------------------------------- |
-| `@0xa0a4`       | Ожидания по 2 scheduler ticks; после превышения счётчика 300 возвращает `0x100` |
-| `@0xa0e8`       | Ожидания по 10 ticks; после превышения 500 возвращает `0x1ff`                   |
-| `@0x2b0c(1000)` | До 1000 ожиданий по 1 tick; затем `-1`; используется сжатым растром             |
+| Function        | Behavior when no byte is available                                                 |
+| --------------- | ---------------------------------------------------------------------------------- |
+| `@0xa0a4`       | Waits in 2-scheduler-tick intervals; returns `0x100` after the counter exceeds 300 |
+| `@0xa0e8`       | Waits in 10-tick intervals; returns `0x1ff` after the counter exceeds 500          |
+| `@0x2b0c(1000)` | Up to 1000 waits of 1 tick, then `-1`; used by compressed rasters                  |
 
-Частота scheduler tick здесь не установлена: эти значения не следует без
-проверки подписывать как миллисекунды. Строковые и многие vendor-обработчики
-сужают `0x100` до `u8`, получая `00`, либо включают его в арифметику поля.
-Поэтому обрыв команды не всегда означает её отмену: он может изменить параметр,
-завершить и сохранить неполную строку или испортить размер следующего payload.
+The scheduler tick frequency is unknown here: do not label these values as
+milliseconds without verification. String handlers and many vendor handlers narrow
+`0x100` to `u8`, producing `00`, or include it in field arithmetic. An interrupted
+command therefore does not always mean cancellation: it may change a parameter,
+terminate and save an incomplete string, or corrupt the next payload's size.
 
-Неизвестный opcode `10 ff xx` потребляется без ответа и без чтения аргументов.
-Предполагаемые аргументы неизвестной команды затем оказываются в основном
-потоке. Это не безопасная схема обнаружения команд перебором на устройстве.
+An unknown `10 ff xx` opcode is consumed without a response or argument reads.
+The supposed arguments of an unknown command then enter the main stream. This is
+not a safe way to discover commands by brute force on a physical device.
 
-Верхний читатель `@0x4350` имеет отдельную ветвь для байтов **`>0x80`**:
-он пропускает данные и ищет последовательности маркеров `10 ff fe 01/45`
-через автомат `@0x3a24`. Это не декодер UTF-8. Самостоятельный бинарный поток
-без корректного заголовка изображения нельзя подавать как текст. Внутренние
-чтения тела `GS v 0` и `1f 00` эту внешнюю фильтрацию обходят.
+The outer reader at `@0x4350` has a separate branch for bytes **`>0x80`**: it skips
+data and searches for the marker sequences `10 ff fe 01/45` using the state
+machine at `@0x3a24`. This is not a UTF-8 decoder. A standalone binary stream
+without a correct image header must not be sent as text. Internal body reads for
+`GS v 0` and `1f 00` bypass this outer filtering.
 
-## 5. Все vendor-команды `10 ff`
+## 5. All `10 ff` vendor commands
 
-В первом столбце указан хвост **после `10 ff`**. Полная диспетчеризация находится
-в `@0x4ec8–0x5208`; перечень проверен перебором всех 256 opcode в изолированном
-исполнении. Таблица описывает корректно переданные аргументы; обработка обрыва
-имеет исключения из предыдущего раздела.
+The first column gives the suffix **after `10 ff`**. The complete dispatcher is
+at `@0x4ec8–0x5208`; the list was verified by exercising all 256 opcodes in isolated
+execution. The table describes correctly supplied arguments; interrupted commands
+have the exceptions described in the previous section.
 
-| Хвост        | Аргументы / ответ `FF01`      | Действие и ограничения                                                                                                                    | Опорный код          |
-| ------------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `00 v:u32be` | `OK`                          | Сохранить младшие 16 бит `v` в порог датчика `RAM 0x25fc6`                                                                                | `@0x4fba`            |
-| `01`         | 12 байт                       | Первый `u32be` — тот же 16-битный порог; оставшиеся 8 байт не имеют стабильного контракта                                                 | `@0x42e8`            |
-| `02`         | `u16be`                       | Показание ADC канала 3                                                                                                                    | `@0x4fea`            |
-| `03`         | `OK` / `ER1` / `ER2` / `ER3`  | Калибровка датчика бумаги с движением двигателя и возможным сохранением порога                                                            | `@0x855c`            |
-| `04`         | `OK`                          | Сброс конфигурационных полей к заводским значениям и сохранение                                                                           | `@0x5544`            |
-| `05 v:u32be` | `u32be`                       | Временно применить младший байт `v` к PWM, подождать 100 ticks, измерить ADC 3, вернуть сохранённый PWM                                   | `@0x5038`            |
-| `06 v:u32be` | `OK`                          | Сохранить младшие 8 бит `v` в `RAM 0x26026`, применить PWM                                                                                | `@0x507e`            |
-| `0e s`       | Обычно `u16be`                | Диагностические параметры; подробности ниже                                                                                               | `@0x449c`            |
-| `0f s`       | `u32be` для `s=0..5`          | ADC: отображение подкоманд на каналы `[0,1,3,4,2,5]`; иначе без ответа                                                                    | `@0x4014`            |
-| `10 s n`     | `OK` / `ER`                   | Плотность, ограничение скорости или raw-параметр; неизвестный `s` не читает `n` и не отвечает                                             | `@0x55e0`            |
-| `11`         | 4 байта                       | `[density, speedCap, paperFlag, rawMode]`                                                                                                 | `@0x50c2`            |
-| `12 t:u16be` | `OK` при `t<1440`, иначе `ER` | Сохранить параметр автоотключения `RAM 0x26024`; `0` отключает условие                                                                    | `@0x4f08`            |
-| `13`         | `u16be`                       | Прочитать `RAM 0x26024`                                                                                                                   | `@0x50e2`            |
-| `20 s …`     | Строки либо `OK`              | Идентификация и запись заводских строк; не все подкоманды являются запросами                                                              | `@0x7b58`            |
-| `30 s …`     | Зависит от `s`                | Имя, адреса Bluetooth, управляющий флаг SDK                                                                                               | `@0x20d0`            |
-| `40`         | 1 байт                        | Битовая маска состояния                                                                                                                   | `@0x4420`            |
-| `50 s`       | `u16be`                       | Батарея либо измерение бумаги                                                                                                             | `@0x50f4`            |
-| `64`         | Нет прямого ответа            | Вставить во внутренний поток задание `Selftest`                                                                                           | `@0x74a4`            |
-| `70`         | ASCII, переменная длина       | Составная информационная строка из шести полей                                                                                            | `@0x404c`            |
-| `80 n`       | Нет                           | `RAM 0x26027 = (n == 1)`; назначение флага не установлено; немедленного сохранения нет                                                    | `@0x512e`            |
-| `81 n`       | Нет                           | Сохранить raw-байт в `RAM 0x26029`; смысл/единицы не установлены                                                                          | `@0x4f5e`            |
-| `85`         | 1 байт                        | Прочитать raw-параметр `RAM 0x2602b`                                                                                                      | `@0x5146`            |
-| `b0 s`       | При `s=02` — 20 ASCII-байт    | `Mar 21 2026 16:29:06`; остальные `s` без ответа                                                                                          | `@0x514e`            |
-| `c0 s`       | Зависит от `s`                | Питание и raw-настройки; ниже                                                                                                             | `@0x5180`            |
-| `d0`         | `35 34 36 31 39 33 34 00`     | Константа `5461934` с NUL; назначение не установлено                                                                                      | `@0x4f76`            |
-| `e0 aa aa`   | Нет по BLE                    | Включить режим служебных кадров `1b 10`; другие два байта ничего не включают                                                              | `@0x51a4`, `@0x8c18` |
-| `ee aa aa`   | Нет по BLE                    | Та же ветвь, что `e0`                                                                                                                     | `@0x51a4`            |
-| `ef s`       | При `s=f6` — 24 ASCII-байта   | 12 символов `0`, затем шесть байт из `RAM 0x20162` в обратном порядке, uppercase hex; вероятно аппаратный идентификатор; иначе без ответа | `@0x4500`            |
-| `f0 n`       | Нет                           | Подача `n` пустых строк; при тайм-ауте аргумента подачи нет                                                                               | `@0x4f92`, `@0x6b64` |
-| `f4`         | Нет прямого ответа            | Другой встроенный тестовый/информационный лист                                                                                            | `@0x7114`            |
-| `f8 n`       | Нет                           | `RAM 0x20088 = (n == 1)`; назначение флага не установлено                                                                                 | `@0x381c`            |
-| `fe s`       | Зависит от `s`                | Разрешение старта и маркер конца задания                                                                                                  | `@0x6504`            |
-| `ff n`       | 1 байт                        | Преобразование двух полубайтов, формула ниже                                                                                              | `@0x7f84`            |
+| Suffix       | Arguments / `FF01` response      | Action and limitations                                                                                                                      | Reference code       |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `00 v:u32be` | `OK`                             | Save the low 16 bits of `v` to the sensor threshold at `RAM 0x25fc6`                                                                        | `@0x4fba`            |
+| `01`         | 12 bytes                         | The first `u32be` is the same 16-bit threshold; the remaining 8 bytes have no stable contract                                               | `@0x42e8`            |
+| `02`         | `u16be`                          | ADC channel 3 reading                                                                                                                       | `@0x4fea`            |
+| `03`         | `OK` / `ER1` / `ER2` / `ER3`     | Paper sensor calibration with motor movement and possible threshold saving                                                                  | `@0x855c`            |
+| `04`         | `OK`                             | Reset configuration fields to factory defaults and save                                                                                     | `@0x5544`            |
+| `05 v:u32be` | `u32be`                          | Temporarily apply the low byte of `v` to PWM, wait 100 ticks, measure ADC 3, and restore the saved PWM                                      | `@0x5038`            |
+| `06 v:u32be` | `OK`                             | Save the low 8 bits of `v` to `RAM 0x26026` and apply PWM                                                                                   | `@0x507e`            |
+| `0e s`       | Usually `u16be`                  | Diagnostic parameters; details below                                                                                                        | `@0x449c`            |
+| `0f s`       | `u32be` for `s=0..5`             | ADC: subcommands map to channels `[0,1,3,4,2,5]`; otherwise no response                                                                     | `@0x4014`            |
+| `10 s n`     | `OK` / `ER`                      | Density, speed cap, or raw parameter; an unknown `s` neither reads `n` nor responds                                                         | `@0x55e0`            |
+| `11`         | 4 bytes                          | `[density, speedCap, paperFlag, rawMode]`                                                                                                   | `@0x50c2`            |
+| `12 t:u16be` | `OK` if `t<1440`, otherwise `ER` | Save the auto-off parameter at `RAM 0x26024`; `0` disables the condition                                                                    | `@0x4f08`            |
+| `13`         | `u16be`                          | Read `RAM 0x26024`                                                                                                                          | `@0x50e2`            |
+| `20 s …`     | Strings or `OK`                  | Identification and factory string writes; not all subcommands are queries                                                                   | `@0x7b58`            |
+| `30 s …`     | Depends on `s`                   | Name, Bluetooth addresses, SDK control flag                                                                                                 | `@0x20d0`            |
+| `40`         | 1 byte                           | State bitmask                                                                                                                               | `@0x4420`            |
+| `50 s`       | `u16be`                          | Battery or paper measurement                                                                                                                | `@0x50f4`            |
+| `64`         | No direct response               | Insert a `Selftest` job into the internal stream                                                                                            | `@0x74a4`            |
+| `70`         | ASCII, variable length           | Composite information string with six fields                                                                                                | `@0x404c`            |
+| `80 n`       | None                             | `RAM 0x26027 = (n == 1)`; flag purpose unknown; no immediate save                                                                           | `@0x512e`            |
+| `81 n`       | None                             | Save a raw byte to `RAM 0x26029`; meaning/units unknown                                                                                     | `@0x4f5e`            |
+| `85`         | 1 byte                           | Read the raw parameter at `RAM 0x2602b`                                                                                                     | `@0x5146`            |
+| `b0 s`       | 20 ASCII bytes for `s=02`        | `Mar 21 2026 16:29:06`; other `s` values produce no response                                                                                | `@0x514e`            |
+| `c0 s`       | Depends on `s`                   | Power and raw settings; see below                                                                                                           | `@0x5180`            |
+| `d0`         | `35 34 36 31 39 33 34 00`        | Constant `5461934` with NUL; purpose unknown                                                                                                | `@0x4f76`            |
+| `e0 aa aa`   | None over BLE                    | Enable `1b 10` maintenance frame mode; any other two bytes do not enable it                                                                 | `@0x51a4`, `@0x8c18` |
+| `ee aa aa`   | None over BLE                    | Same branch as `e0`                                                                                                                         | `@0x51a4`            |
+| `ef s`       | 24 ASCII bytes for `s=f6`        | 12 `0` characters, then six bytes from `RAM 0x20162` in reverse order as uppercase hex; likely a hardware identifier; otherwise no response | `@0x4500`            |
+| `f0 n`       | None                             | Feed `n` blank rows; no feed if the argument times out                                                                                      | `@0x4f92`, `@0x6b64` |
+| `f4`         | No direct response               | Another built-in test/information sheet                                                                                                     | `@0x7114`            |
+| `f8 n`       | None                             | `RAM 0x20088 = (n == 1)`; flag purpose unknown                                                                                              | `@0x381c`            |
+| `fe s`       | Depends on `s`                   | Start permission and end-of-job marker                                                                                                      | `@0x6504`            |
+| `ff n`       | 1 byte                           | Transformation of two nibbles; formula below                                                                                                | `@0x7f84`            |
 
-### Идентификация: `10 ff 20 s`
+### Identification: `10 ff 20 s`
 
-| `s`                  | Ответ / действие                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `ef`                 | Строка из `RAM 0x26061`, длина `strlen`; строка аппаратной/служебной версии, конкретное значение зависит от внешнего состояния |
-| `f0`                 | Ровно 5 байт `A6_SD`                                                                                                           |
-| `f1`                 | Ровно 12 байт `V1.22_203dpi`                                                                                                   |
-| `f2`                 | Серийная строка `RAM 0x25fc8`, без NUL                                                                                         |
-| `f3 text terminator` | Записать до 20 байт в `RAM 0x25fe6`, сохранить, ответить `OK`                                                                  |
-| `f4 text terminator` | Записать до 29 байт в серийную строку, установить служебный флаг, сохранить, ответить `OK`                                     |
-| `f9`                 | Ровно 9 байт `NN0000210`                                                                                                       |
-| Остальные            | Нет ответа; дополнительных аргументов не читают                                                                                |
+| `s`                  | Response / action                                                                                                           |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `ef`                 | String from `RAM 0x26061`, length `strlen`; hardware/maintenance version string, with its value dependent on external state |
+| `f0`                 | Exactly 5 bytes, `A6_SD`                                                                                                    |
+| `f1`                 | Exactly 12 bytes, `V1.22_203dpi`                                                                                            |
+| `f2`                 | Serial string at `RAM 0x25fc8`, without NUL                                                                                 |
+| `f3 text terminator` | Write up to 20 bytes to `RAM 0x25fe6`, save, and respond with `OK`                                                          |
+| `f4 text terminator` | Write up to 29 bytes to the serial string, set a maintenance flag, save, and respond with `OK`                              |
+| `f9`                 | Exactly 9 bytes, `NN0000210`                                                                                                |
+| Others               | No response; no additional arguments are read                                                                               |
 
-`f3` похоже на производственную дату: начальное значение поля — `2024-09-09`.
-Проверки календарного формата нет. Обе строки принимают байты `20..7f`, кроме
-запятой `2c`; первый байт вне этого набора завершает и потребляется. NUL подходит
-как явный терминатор. Байтовый диапазон включает `7f`, хотя это не печатный ASCII.
+`f3` appears to be a production date: the initial field value is `2024-09-09`.
+There is no calendar-format validation. Both strings accept bytes `20..7f` except
+comma `2c`; the first byte outside this set terminates the string and is consumed.
+NUL is a valid explicit terminator. The byte range includes `7f`, although it is
+not printable ASCII.
 
-При достижении лимита обработчик **сначала читает ещё один байт**, затем выходит,
-не сохраняя его. Остаток слишком длинной строки не вычитывается. Тайм-аут
-превращается в NUL и также завершает запись с `OK`. Поэтому эти команды нельзя
-использовать как безвредные информационные запросы.
+When the limit is reached, the handler **reads one more byte first**, then exits
+without storing it. It does not drain the rest of an overlong string. A timeout
+becomes NUL and also completes the write with `OK`. These commands therefore must
+not be used as harmless information queries.
 
-### Bluetooth-информация: `10 ff 30 s`
+### Bluetooth information: `10 ff 30 s`
 
-| `s`                     | Формат                                                                   |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `11`                    | `strlen` байт из `RAM 0x25ffb`, без NUL                                  |
-| `12`                    | Ровно 12 сырых байт из `RAM 0x29fda`: две группы по шесть; не ASCII      |
-| `22 n`                  | Передать SDK булево значение `(n == 1)`; `OK` при успехе SDK, иначе `ER` |
-| Остальные, включая `10` | Нет ответа                                                               |
+| `s`                    | Format                                                                  |
+| ---------------------- | ----------------------------------------------------------------------- |
+| `11`                   | `strlen` bytes from `RAM 0x25ffb`, without NUL                          |
+| `12`                   | Exactly 12 raw bytes from `RAM 0x29fda`: two groups of six, not ASCII   |
+| `22 n`                 | Pass boolean `(n == 1)` to the SDK; `OK` on SDK success, otherwise `ER` |
+| Others, including `10` | No response                                                             |
 
-Назначение булевого флага `22` на уровне радиорежима не установлено
-(`@0x1c78`, внутренняя команда SDK `0x0c`). Называть его включением pairing,
-discoverability или BLE без дополнительного подтверждения нельзя.
+The radio-level purpose of boolean flag `22` is unknown (`@0x1c78`, internal SDK
+command `0x0c`). It must not be described as enabling pairing, discoverability,
+or BLE without further evidence.
 
-`10 ff 70` форматирует данные так:
+`10 ff 70` formats its data as:
 
 ```text
 name|AA:BB:CC:DD:EE:FF|GG:HH:II:JJ:KK:LL|V1.22_203dpi|serial|batteryPercent
 ```
 
-Каждая группа адреса идёт в порядке байт ответа `30 12`, заглавным hex.
-`batteryPercent` здесь десятичный ASCII, тогда как в `50 f1` он бинарный.
-Строка не экранирует `|` внутри сохранённого серийного номера, а строковый setter
-этот символ допускает. Поэтому шесть полей гарантированы только для обычных
-заводских строк без разделителя.
+Each address group follows the byte order of response `30 12`, in uppercase hex.
+Here, `batteryPercent` is decimal ASCII; in `50 f1`, it is binary. The string does
+not escape `|` within the saved serial number, and the string setter allows that
+character. Six fields are therefore guaranteed only for ordinary factory strings
+without the separator.
 
-### Настройки печати: `10 ff 10 s n`
+### Print settings: `10 ff 10 s n`
 
-| `s`  | Допустимый `n` | Что хранится                                                              | Сохранение              |
-| ---- | -------------- | ------------------------------------------------------------------------- | ----------------------- |
-| `00` | `0..2`         | Raw-плотность, `RAM 0x25fb0`; при изменении пересчитывает таблицы нагрева | Нет немедленного вызова |
-| `01` | `0..2`         | Ограничение скорости `15, 25, 35` соответственно, `RAM 0x25fa8`           | Есть                    |
-| `02` | `0..5`         | Raw-параметр `RAM 0x2602b`, назначение не установлено                     | Нет немедленного вызова |
+| `s`  | Valid `n` | Stored value                                                         | Saving            |
+| ---- | --------- | -------------------------------------------------------------------- | ----------------- |
+| `00` | `0..2`    | Raw density, `RAM 0x25fb0`; recalculates heating tables when changed | No immediate call |
+| `01` | `0..2`    | Speed cap `15, 25, 35`, respectively, at `RAM 0x25fa8`               | Yes               |
+| `02` | `0..5`    | Raw parameter at `RAM 0x2602b`, purpose unknown                      | No immediate call |
 
-Другие значения `n` дают `ER`. Все 256 значений аргумента плотности проверены
-в исполнении диспетчера и обработчика. Ответ `11` возвращает именно сохранённое
-значение ограничения скорости, например `19` hex для 25, а не индекс `01`.
-Третий байт `11` — `RAM 0x25fb8`, флаг, определяющий действие одиночного `0c`.
+Other `n` values produce `ER`. All 256 density argument values were checked by
+executing the dispatcher and handler. Response `11` returns the stored speed cap,
+for example hex `19` for 25, not index `01`. The third byte of `11` is
+`RAM 0x25fb8`, the flag that controls the action of a standalone `0c`.
 
-Заводская инициализация `@0x5544` задаёт, среди прочего: плотность 1, ограничение
-скорости **24** (оно не равно ни одному из трёх значений setter), `paperFlag=1`,
-пороги 1050 и 350, автоотключение 20, `RAM 0x26027=1`, `RAM 0x26029=32`.
-Это значения функции сброса, а не доказанное текущее состояние аппарата.
+Factory initialization at `@0x5544` sets, among other values: density 1, speed cap
+**24** (which matches none of the setter's three values), `paperFlag=1`, thresholds
+1050 and 350, auto-off 20, `RAM 0x26027=1`, and `RAM 0x26029=32`. These are the
+reset function's values, not the confirmed current state of a physical printer.
 
-Сохранитель `@0x84c8` записывает общую область конфигурации размером 208 байт
-из `RAM 0x25f90` во flash `0x01070000`. Поэтому «нет немедленного вызова»
-не означает «никогда не сохраняется»: последующая другая команда сохранения
-может записать уже изменённое поле.
+The save routine at `@0x84c8` writes the shared 208-byte configuration area from
+`RAM 0x25f90` to flash at `0x01070000`. “No immediate call” therefore does not mean
+“never saved”: a later save triggered by another command may persist the changed
+field.
 
-PWM-параметр `06` хранит произвольный младший байт, но применение через `@0x8c24`
-ограничивает его сверху 99. Значение, возвращаемое `c0 01`, может поэтому отличаться
-от реально применённого. Физическое назначение этого PWM полностью не установлено.
-Использовать его как ещё одну команду «плотности» оснований нет.
+PWM parameter `06` stores any low byte, but application through `@0x8c24` caps it
+at 99. The value returned by `c0 01` may therefore differ from the applied value.
+The physical purpose of this PWM is not fully established. There is no basis for
+using it as another “density” command.
 
-Для `12` код автоотключения `@0x8e80` умножает значение на 60 и сравнивает со
-счётчиком простоя; `0` отключает условие. Вероятная единица — минуты, но частота
-обновления счётчика в этой спецификации не подтверждена.
+For `12`, the auto-off code at `@0x8e80` multiplies the value by 60 and compares it
+with an idle counter; `0` disables the condition. The likely unit is minutes, but
+this specification does not confirm the counter's update frequency.
 
-### Диагностика, батарея и датчики
+### Diagnostics, battery, and sensors
 
-| Запрос                  | Ответ                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `10 ff 0e 00`           | Порог `RAM 0x25fc4`, `u16be`                                                                      |
-| `10 ff 0e 01`           | Порог `RAM 0x25fc6`, `u16be`                                                                      |
-| `10 ff 0e f0`           | Младшие 16 бит диагностического значения `RAM 0x20090`, big-endian                                |
-| `10 ff 0e f1`           | Младшие 16 бит диагностического значения `RAM 0x20094`, big-endian                                |
-| `10 ff 0e` + другой `s` | Два байта из неинициализированного участка стека, **включая `s=04`**                              |
-| `10 ff 50 f1`           | Расчётный процент батареи, `u16be`, функция `@0x2088`                                             |
-| `10 ff 50 f2`           | `u16be(RAM.u16[0x20120] >> 3)`                                                                    |
-| `10 ff c0 00`           | `00` и булево значение `(@0x1060() == 1)`; вероятно признак зарядки, фильтрованный по двум входам |
-| `10 ff c0 01`           | Сохранённый PWM-байт `RAM 0x26026`, расширенный до `u32be`                                        |
-| `10 ff c0 02`           | Raw-байт `RAM 0x26029`                                                                            |
+| Query                    | Response                                                                                     |
+| ------------------------ | -------------------------------------------------------------------------------------------- |
+| `10 ff 0e 00`            | Threshold at `RAM 0x25fc4`, `u16be`                                                          |
+| `10 ff 0e 01`            | Threshold at `RAM 0x25fc6`, `u16be`                                                          |
+| `10 ff 0e f0`            | Low 16 bits of diagnostic value `RAM 0x20090`, big-endian                                    |
+| `10 ff 0e f1`            | Low 16 bits of diagnostic value `RAM 0x20094`, big-endian                                    |
+| `10 ff 0e` + another `s` | Two bytes from an uninitialized stack area, **including `s=04`**                             |
+| `10 ff 50 f1`            | Estimated battery percentage, `u16be`, function `@0x2088`                                    |
+| `10 ff 50 f2`            | `u16be(RAM.u16[0x20120] >> 3)`                                                               |
+| `10 ff c0 00`            | `00` and boolean `(@0x1060() == 1)`; likely a charging indicator filtered through two inputs |
+| `10 ff c0 01`            | Saved PWM byte at `RAM 0x26026`, extended to `u32be`                                         |
+| `10 ff c0 02`            | Raw byte at `RAM 0x26029`                                                                    |
 
-Неизвестные подкоманды `50` и `c0` ответа не дают.
+Unknown `50` and `c0` subcommands produce no response.
 
-Процент батареи вычисляется из `v=RAM.u32[0x200bc]`: при флаге полного заряда
-`RAM[0x26054]==1` возвращается 100, при `v≤350` — 1, при `v≥405` — 99,
-иначе целая часть `100*(v-350)/55`. Это оценка по внутренней величине,
-а не измеренная остаточная ёмкость. Значение 0 эта функция для обычного
-состояния не возвращает.
+Battery percentage is calculated from `v=RAM.u32[0x200bc]`: it returns 100 when
+the full-charge flag `RAM[0x26054]==1`, 1 when `v≤350`, 99 when `v≥405`, and the
+integer part of `100*(v-350)/55` otherwise. This is an estimate from an internal
+value, not a measurement of remaining capacity. The function does not return 0
+for a normal state.
 
-**`50 f2` не является установленным запросом напряжения батареи.** Значение
-`RAM 0x20120` записывает таймер печати `@0x665a` по расстоянию между переходами
-датчика бумаги. Деление на 8 согласуется с переводом шагов 203 dpi в миллиметры,
-но физическая единица и точное название измеренного участка требуют проверки.
+**`50 f2` is not an established battery voltage query.** The print timer at
+`@0x665a` writes `RAM 0x20120` based on the distance between paper sensor
+transitions. Dividing by 8 is consistent with converting 203 dpi steps to
+millimeters, but the physical unit and exact name of the measured interval require
+verification.
 
-**Хвост ответа `10 ff 01` нельзя называть двумя достоверными измерениями.**
-`@0x42e8` формирует три `u32be`: порог из RAM, входной регистр R2, входной R1.
-Вызывающая ветвь `@0x4fe4` не задаёт два последних аргумента. Их значения зависят
-от предшествующего кода чтения и не составляют стабильный формат датчиков.
-Этот эффект отдельно воспроизведён с заданными различными значениями R1 и R2.
+**The tail of response `10 ff 01` must not be described as two reliable
+measurements.** `@0x42e8` produces three `u32be` values: the threshold from RAM,
+input register R2, and input R1. The calling branch at `@0x4fe4` does not set the
+last two arguments. Their values depend on preceding read code and do not form a
+stable sensor format. This effect was reproduced separately with different preset
+values of R1 and R2.
 
-У `03` код возврата калибратора преобразуется так: `0 → OK`, `-1 → ER1`
-(устройство уже занято), `-2 → ER2` (ветвь аварийного состояния калибровки),
-`-3 → ER3` (недостаточный диапазон измерений). Успех требует внутреннего
-измеренного диапазона больше 125; новый порог сохраняется в `RAM 0x25fc6`.
-Более точное физическое толкование `ER2/ER3` без платы не установлено.
+For `03`, the calibrator's return code is mapped as follows: `0 → OK`,
+`-1 → ER1` (device already busy), `-2 → ER2` (calibration fault branch), and
+`-3 → ER3` (insufficient measurement range). Success requires an internal measured
+range greater than 125; the new threshold is saved to `RAM 0x25fc6`. A more precise
+physical interpretation of `ER2/ER3` has not been established without the board.
 
-### Битовая маска `10 ff 40`
+### `10 ff 40` state bitmask
 
-| Бит      | Точное условие установки                          | Интерпретация                                                                          |
-| -------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 0 (`01`) | `@0x4654() == 0`, то есть `RAM.u32[0x20128] != 0` | Печать/калибровка/ошибка обработчика; не универсальный признак «в очереди есть данные» |
-| 1 (`02`) | `@0x0c4c() == 0`                                  | Состояние датчика, вероятно открытая крышка; канал ADC 2 и порог 512                   |
-| 2 (`04`) | `@0x0c80() == 2`                                  | Состояние датчика отсутствия бумаги                                                    |
-| 3 (`08`) | `@0x4654() != 0` и `@0x1f2c(1) == 2`              | Низкий заряд; эта ветвь проверяется только при нулевом состоянии печати                |
-| 4 (`10`) | `@0x7c50() != 0`, то есть `RAM.u32[0x2606c] != 0` | Температурная блокировка                                                               |
-| 5–7      | Не устанавливаются этой функцией                  | Нули                                                                                   |
+| Bit      | Exact condition for setting it                 | Interpretation                                                              |
+| -------- | ---------------------------------------------- | --------------------------------------------------------------------------- |
+| 0 (`01`) | `@0x4654() == 0`, i.e. `RAM.u32[0x20128] != 0` | Printing/calibration/handler error; not a universal “data queued” indicator |
+| 1 (`02`) | `@0x0c4c() == 0`                               | Sensor state, likely an open cover; ADC channel 2 and threshold 512         |
+| 2 (`04`) | `@0x0c80() == 2`                               | Paper-out sensor state                                                      |
+| 3 (`08`) | `@0x4654() != 0` and `@0x1f2c(1) == 2`         | Low battery; this branch is checked only when the print state is zero       |
+| 4 (`10`) | `@0x7c50() != 0`, i.e. `RAM.u32[0x2606c] != 0` | Temperature interlock                                                       |
+| 5–7      | Not set by this function                       | Zero                                                                        |
 
-Температурный флаг устанавливает `@0x49a0`: расчётная температура выше 70,
-снимает ниже 65, с фильтрацией по времени. Перевод показания ADC 1 в эту шкалу
-происходит в `@0x0a94` по таблице. Физическая калибровка температуры и положения
-датчиков здесь не проверены. Признак крышки также фильтруется последовательными
-измерениями, поэтому это не моментальный raw-уровень входа.
+`@0x49a0` sets the temperature flag above a calculated temperature of 70 and clears
+it below 65, with time filtering. `@0x0a94` converts the ADC 1 reading to this scale
+using a table. Physical temperature calibration and sensor positions have not
+been checked here. The cover indicator is also filtered over successive readings,
+so it is not an instantaneous raw input level.
 
-### Диагностическое преобразование `10 ff ff n`
+### Diagnostic transformation `10 ff ff n`
 
 ```text
 hi = n >> 4
@@ -410,100 +415,102 @@ lo = n & 0x0f
 reply = ((hi | lo) << 4) | (hi & lo)
 ```
 
-Примеры: `a5 → f0`, `3c → f0`, `ff → ff`. Формула проверена для всех 256 байт.
-Это не checksum всего задания и не доказательство аутентификации.
+Examples: `a5 → f0`, `3c → f0`, `ff → ff`. The formula was verified for all 256
+byte values. It is not a checksum of the whole job or evidence of authentication.
 
-## 6. Обычный растр `GS v 0`
+## 6. Uncompressed raster `GS v 0`
 
 ```text
 1d 76 30 m xL xH yL yH DATA
 ```
 
-| Поле              | Смысл                                                 |
-| ----------------- | ----------------------------------------------------- |
-| `m`               | `00..03` либо ASCII `30..33`                          |
-| `x = xL + 256*xH` | Ширина исходной строки **в байтах**                   |
-| `y = yL + 256*yH` | Число исходных строк                                  |
-| `DATA`            | Ровно `x*y` байт, строка за строкой, без разделителей |
+| Field             | Meaning                                             |
+| ----------------- | --------------------------------------------------- |
+| `m`               | `00..03` or ASCII `30..33`                          |
+| `x = xL + 256*xH` | Source row width **in bytes**                       |
+| `y = yL + 256*yH` | Number of source rows                               |
+| `DATA`            | Exactly `x*y` bytes, row by row, without separators |
 
-Один бит — одна точка; `1` — чёрная, старший бит байта расположен слева.
-Головка рассчитана на **384 точки / 48 байт**. Режимы:
+One bit is one dot; `1` means black, and the most significant bit of a byte is on
+the left. The print head is **384 dots / 48 bytes** wide. Modes:
 
-| `m`        | Горизонталь | Вертикаль |
-| ---------- | ----------- | --------- |
-| `00`, `30` | ×1          | ×1        |
-| `01`, `31` | ×2          | ×1        |
-| `02`, `32` | ×1          | ×2        |
-| `03`, `33` | ×2          | ×2        |
+| `m`        | Horizontal | Vertical |
+| ---------- | ---------- | -------- |
+| `00`, `30` | ×1         | ×1       |
+| `01`, `31` | ×2         | ×1       |
+| `02`, `32` | ×1         | ×2       |
+| `03`, `33` | ×2         | ×2       |
 
-При удвоении длина входного тела остаётся `x*y`. Выходная строка/точка
-дублируется внутри прошивки. Для полного размещения при нулевом отступе:
-`x≤48` в режимах ×1 и `x≤24` в режимах ×2.
+Doubling does not change the input body length of `x*y`. The firmware duplicates
+output rows/dots internally. To fit the complete image with zero margin, use
+`x≤48` in ×1 modes and `x≤24` in ×2 modes.
 
-Обработчик `@0x6c78` обрезает выход, выходящий за рабочую ширину, но **вычитывает
-все байты заявленной ширины**. Нельзя послать 48 байт вместо заявленных 49:
-49-й байт всё равно будет взят из потока. В изолированном исполнении проверены
-обычный/вертикально удвоенный режимы, ASCII-алиасы, clipping и недостача данных.
-Горизонтальное удвоение прослежено статически; оно использует bit-band alias,
-не моделируемый этим тестовым стендом.
+The handler at `@0x6c78` clips output beyond the working width but **reads all
+bytes of the declared width**. Sending 48 bytes when 49 were declared is invalid:
+the 49th byte will still be taken from the stream. Isolated execution checked
+normal/vertically doubled modes, ASCII aliases, clipping, and missing data.
+Horizontal doubling was traced statically; it uses a bit-band alias not modeled
+by this test harness.
 
-Выравнивание берётся из `ESC a`. Пусть `W=8*x` или `16*x` с удвоением,
-`cursor=RAM.u32[0x20008]`, `margin=RAM.u32[0x20040]`:
+Alignment comes from `ESC a`. Let `W=8*x`, or `16*x` with doubling,
+`cursor=RAM.u32[0x20008]`, and `margin=RAM.u32[0x20040]`:
 
-- Слева: начало в `cursor`.
-- По центру: `(384-W+margin)/2`, если `W+margin<384`, иначе 0.
-- Справа: `384-W`, если `W<384`, иначе 0.
+- Left: start at `cursor`.
+- Center: `(384-W+margin)/2` if `W+margin<384`, otherwise 0.
+- Right: `384-W` if `W<384`, otherwise 0.
 
-В режимах без горизонтального удвоения начало дополнительно делится на 8
-с отбрасыванием остатка: позиционирование фактически побайтовое. В режимах ×2
-используется побитовое размещение. Крайние сочетания ненулевого отступа и слишком
-широкого удвоенного растра не подтверждены как корректные; нормализованный вход
-в пределах 384 точек снимает эту неоднозначность.
+Without horizontal doubling, the start position is additionally divided by 8,
+discarding the remainder: positioning is effectively byte-aligned. The ×2 modes
+use bit-level placement. Extreme combinations of a nonzero margin and an overwide
+doubled raster have not been confirmed correct; normalized input within 384 dots
+avoids this ambiguity.
 
-Особые случаи реализации:
+Implementation edge cases:
 
-- `y=0` не создаёт строк; `x=0, y>0` даёт пустые строки.
-- Недопустимый `m` обнаруживается **после чтения размеров**. Тело не вычитывается
-  и может стать следующими командами/текстом.
-- При недостаче значимого байта тела `@0xa0e8` возвращает значение >255:
-  обработчик устанавливает `RAM.u32[0x20128]=4` и выходит без публикации
-  незавершённой строки. Уже опубликованные строки это не откатывает.
-- Вычитывание обрезанной части использует другой reader, с иной обработкой
-  тайм-аута. Заголовок также не имеет общей проверки всех тайм-аутов.
-- В начале есть ожидание накопления входных данных при малом заполнении кольца.
-  Это отдельная эвристика буферизации, не новое условие размера BLE-пакета.
-- Ветвь `GS v` вызывает ограничитель скорости со значением 24 ещё до проверки
-  следующего байта `30` (`@0x28f0`).
+- `y=0` produces no rows; `x=0, y>0` produces blank rows.
+- An invalid `m` is detected **after reading the dimensions**. The body is not
+  drained and may become subsequent commands/text.
+- If a required body byte is missing, `@0xa0e8` returns a value >255: the handler
+  sets `RAM.u32[0x20128]=4` and exits without publishing the incomplete row.
+  Already published rows are not rolled back.
+- Draining the clipped portion uses a different reader with different timeout
+  handling. The header also lacks a shared check for all timeouts.
+- At the start, the handler waits for input data to accumulate when ring occupancy
+  is low. This is a separate buffering heuristic, not another BLE packet size rule.
+- The `GS v` branch calls the speed limiter with a value of 24 before even checking
+  the following `30` byte (`@0x28f0`).
 
-Минимальный пример корректного тела: две строки по два байта, 16×2 точки:
+Minimal valid body example: two rows of two bytes, 16×2 dots:
 
 ```text
 1d 76 30 00 02 00 02 00 80 01 ff 00
                          └ DATA ───┘
 ```
 
-Это только команда изображения; разрешение печати и конец задания описаны
-в разделе 9. Для проверки упаковки в самом образе есть три готовых `GS v 0`
-по смещениям `0xe0c6`, `0xeeae`, `0xf1e6` (384×74, 384×17, 384×17).
+This is only the image command; print permission and end-of-job handling are
+covered in section 9. For checking bit packing, the image itself contains three
+ready-made `GS v 0` commands at offsets `0xe0c6`, `0xeeae`, and `0xf1e6`
+(384×74, 384×17, 384×17).
 
-## 7. Сжатый растр `1f 00`
+## 7. Compressed raster `1f 00`
 
-Отдельный путь главного цикла `@0x9788 → @0x1ddc`:
+A separate main-loop path, `@0x9788 → @0x1ddc`:
 
 ```text
 1f 00 X:u16be Y:u16be N:u32be COMPRESSED
 ```
 
-`X` — ширина распакованной строки в байтах. `Y` — заявленная высота.
-`N` — заявленная длина сжатой части. В отличие от `GS v 0` многобайтовые поля
-здесь **big-endian**.
+`X` is the uncompressed row width in bytes. `Y` is the declared height.
+`N` is the declared compressed body length. Unlike `GS v 0`, multibyte fields here
+are **big-endian**.
 
-Прошивка сама подаёт декодеру два байта `28 91`, затем передаёт получаемые байты
-по одному. Проверенный формат `COMPRESSED` — **zlib-поток с окном 1024 байта,
-у которого удалены первые два байта заголовка**. Конечный Adler-32 остаётся.
-Это не PNG/JPEG и не полный zlib-поток с повторно присланным заголовком.
+The firmware supplies the decoder with two bytes, `28 91`, then feeds incoming
+bytes one by one. The verified `COMPRESSED` format is a **zlib stream with a
+1024-byte window and its first two header bytes removed**. The trailing Adler-32
+is retained. This is not PNG/JPEG or a complete zlib stream with its header sent
+again.
 
-Воспроизводимый генератор проверенного варианта:
+Reproducible generator for the verified variant:
 
 ```python
 import struct
@@ -518,69 +525,70 @@ body = z[2:]
 command = b"\x1f\x00" + struct.pack(">HHI", width_bytes, height, len(body)) + body
 ```
 
-Декодирование этих байтов **реальным кодом V1.22** дало три строки с окончаниями
-`80 01`, `55 aa`, `ff 00`. Аллокатор, очередь строк и периферия были подменены;
-сам декодер и callback `@0x1ee8` исполнялись из образа.
+Decoding these bytes with **the actual V1.22 code** produced three rows ending in
+`80 01`, `55 aa`, and `ff 00`. The allocator, row queue, and peripherals were
+replaced; the decoder itself and callback `@0x1ee8` were executed from the image.
 
-Размещение отличается от обычного растра: начало строки всегда
-`max(48-X, 0)` байт, то есть узкое изображение прижимается вправо независимо от
-`ESC a`. Каждые `X` распакованных байт публикуют строку с тегом `3e`.
-Байты за правой границей 48 не записываются в строку.
+Placement differs from the uncompressed raster: the row always starts at
+`max(48-X, 0)` bytes, so a narrow image is right-aligned regardless of `ESC a`.
+Every `X` uncompressed bytes publish a row with tag `3e`. Bytes beyond the right
+boundary of 48 are not written to the row.
 
-Существенные ограничения, подтверждённые кодом и контрольными примерами:
+Significant limitations confirmed by code and control examples:
 
-- `Y` используется в расчёте коэффициента сжатия/скорости, но не останавливает
-  выпуск строк. Тот же поток при `Y=1` всё равно выпустил три строки.
-- Счётчик сравнения с `N` инициализируется нулём и в цикле не увеличивается.
-  При **любом положительном `N`** чтение продолжается до завершения декодера,
-  ошибки либо тайм-аута. Пример с `N=1` прочитал всё тело из 12 байт.
-- При `N=0` цикл чтения тела не запускается. Это не полезный способ передать
-  изображение с неизвестной длиной.
-- Незавершённый/ошибочный поток может уже опубликовать часть строк. При ошибке
-  декодера существует ветвь публикации частичной строки; при тайм-ауте путь иной.
-- Возвращаемые `0`, `-1` и коды декодера главный цикл не преобразует в ответ
-  `FF01`. Отсутствие ошибки по BLE не подтверждает успешную распаковку.
+- `Y` is used to calculate a compression ratio/speed factor but does not stop row
+  output. The same stream with `Y=1` still produced three rows.
+- The counter compared with `N` is initialized to zero and never incremented in
+  the loop. For **any positive `N`**, reading continues until the decoder finishes,
+  fails, or times out. An example with `N=1` read the entire 12-byte body.
+- With `N=0`, the body-reading loop does not run. This is not a useful way to send
+  an image of unknown length.
+- An incomplete/invalid stream may already have published some rows. Decoder
+  errors have a branch that publishes a partial row; timeouts take a different path.
+- The main loop does not convert return values `0`, `-1`, or decoder error codes
+  into an `FF01` response. The absence of a BLE error does not confirm successful
+  decompression.
 
-Для клиента необходимы собственные проверки `X>0`, размеров, ожидаемого
-распакованного объёма и целостности потока. Обычный `GS v 0` имеет более простую
-границу тела. Полная совместимость всех вариантов DEFLATE и длительная печать
-через `1f 00` аппаратно не проверялись.
+Clients must perform their own checks for `X>0`, dimensions, expected uncompressed
+size, and stream integrity. Ordinary `GS v 0` has a simpler body boundary. Full
+compatibility with all DEFLATE variants and sustained printing through `1f 00`
+have not been tested on hardware.
 
-## 8. Текст, подача и QR
+## 8. Text, paper feed, and QR
 
-Это ограниченное подмножество команд, внешне похожих на ESC/POS. Наличие префиксов
-`ESC`/`GS` не означает поддержку других команд стандарта.
+This is a limited subset of commands that resemble ESC/POS. The presence of
+`ESC`/`GS` prefixes does not imply support for other commands in that standard.
 
-| Команда            | Поведение V1.22                                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------- |
-| `0a` — LF          | Выравнивание накопленного текста, публикация строки и переход на следующую                  |
-| `0c` — FF          | При `paperFlag != 0`: четыре пустые строки и маркер поиска границы страницы; иначе ничего   |
-| `0d` — CR          | Игнорируется                                                                                |
-| `1b 20 n` — ESC SP | Межсимвольный интервал `RAM 0x20030`                                                        |
-| `1b 21 n` — ESC !  | Бит 5: ширина ×2; бит 4: высота ×2; биты 7 и 3 задают дополнительные текстовые флаги        |
-| `1b 33 n` — ESC 3  | Межстрочный интервал `RAM 0x20028`; стартовое значение 30                                   |
-| `1b 47 n` — ESC G  | Младший бит задаёт тот же текстовый флаг, что бит 3 `ESC !`                                 |
-| `1b 4a n` — ESC J  | Подача `n` пустых строк через `@0x6b64`                                                     |
-| `1b 56 n` — ESC V  | `0..3` / ASCII `0..3`: текстовый угол 0°, 90°, 180°, 270°; остальные значения не меняют его |
-| `1b 61 n` — ESC a  | `0..2` / ASCII `0..2`: слева, центр, справа                                                 |
-| `1b 40` — ESC @    | **Сброса нет**: неизвестная ветвь возвращается без сброса параметров                        |
-| `1c` — FS          | Игнорируется как один байт; следующую букву не поглощает                                    |
-| `1d 0c` — GS FF    | Четыре пустые строки и маркер поиска страницы независимо от `paperFlag`                     |
-| `1d 21 n` — GS !   | Ширина `min((n>>4)+1,2)`, высота `min((n&15)+1,2)`                                          |
-| `1d 2f` — GS /     | В этой ветви ничего не делает, дополнительный аргумент не читает                            |
-| `1d 72 n` — GS r   | Читает и отбрасывает один байт; **статус не возвращает**                                    |
-| `1d 76 30 …`       | Обычный растр из раздела 6                                                                  |
-| `1d 6c …`          | QR из следующего подраздела                                                                 |
-| `1f b2 n`          | Читает и отбрасывает один байт; дальнейшее действие не обнаружено                           |
-| `1b 10 …`          | Служебный кадр; только после включения режима, раздел 10                                    |
+| Command            | V1.22 behavior                                                                            |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| `0a` — LF          | Align accumulated text, publish the row, and advance to the next                          |
+| `0c` — FF          | If `paperFlag != 0`: four blank rows and a page-boundary search marker; otherwise nothing |
+| `0d` — CR          | Ignored                                                                                   |
+| `1b 20 n` — ESC SP | Character spacing at `RAM 0x20030`                                                        |
+| `1b 21 n` — ESC !  | Bit 5: width ×2; bit 4: height ×2; bits 7 and 3 set additional text flags                 |
+| `1b 33 n` — ESC 3  | Line spacing at `RAM 0x20028`; initial value 30                                           |
+| `1b 47 n` — ESC G  | The low bit sets the same text flag as bit 3 of `ESC !`                                   |
+| `1b 4a n` — ESC J  | Feed `n` blank rows through `@0x6b64`                                                     |
+| `1b 56 n` — ESC V  | `0..3` / ASCII `0..3`: text angle 0°, 90°, 180°, 270°; other values leave it unchanged    |
+| `1b 61 n` — ESC a  | `0..2` / ASCII `0..2`: left, center, right                                                |
+| `1b 40` — ESC @    | **No reset**: the unknown branch returns without resetting parameters                     |
+| `1c` — FS          | Ignored as a single byte; does not consume the next character                             |
+| `1d 0c` — GS FF    | Four blank rows and a page search marker regardless of `paperFlag`                        |
+| `1d 21 n` — GS !   | Width `min((n>>4)+1,2)`, height `min((n&15)+1,2)`                                         |
+| `1d 2f` — GS /     | Does nothing in this branch and reads no additional argument                              |
+| `1d 72 n` — GS r   | Reads and discards one byte; **does not return status**                                   |
+| `1d 76 30 …`       | Uncompressed raster from section 6                                                        |
+| `1d 6c …`          | QR from the next subsection                                                               |
+| `1f b2 n`          | Reads and discards one byte; no further action found                                      |
+| `1b 10 …`          | Maintenance frame; only after enabling the mode, section 10                               |
 
-Текстовый путь: `@0x69d4`, подготовка глифа `@0x808c`, публикация `@0x5464`.
-Для обычных символов используется ресурс `@0xf51e`, шаг 72 байта, базовая
-логическая ширина 12 и высота 24 точки. Текст накапливается до LF или переноса
-при выходе за ширину. Символы `<0x20`, не обработанные отдельной командой,
-не печатаются; этим объясняется бездействие нулевого padding после `fe 01`.
-Полная кодовая страница расширенных символов не установлена. UTF-8/кириллица
-напрямую этим описанием не поддержаны; для них нужен растр.
+Text path: `@0x69d4`, glyph preparation at `@0x808c`, publishing at `@0x5464`.
+Ordinary characters use the resource at `@0xf51e`, with a 72-byte stride, a base
+logical width of 12 dots, and a height of 24 dots. Text accumulates until LF or
+wrapping past the width. Characters `<0x20` that are not handled as separate
+commands are not printed; this explains why zero padding after `fe 01` does nothing.
+The complete code page for extended characters is unknown. This description does
+not establish direct UTF-8/Cyrillic support; use a raster for those characters.
 
 ### QR: `1d 6c`
 
@@ -588,217 +596,219 @@ command = b"\x1f\x00" + struct.pack(">HHI", width_bytes, height, len(body)) + bo
 1d 6c scale ecc lenL lenH DATA
 ```
 
-Обработчик `@0x291c` принимает:
+The handler at `@0x291c` accepts:
 
-- `scale=0..12`. Нулевой размер проходит начальную проверку, но не является
-  полезным размером печати; для формирования изображения нужны положительные значения.
-- `ecc=0..4` либо ASCII `30..34`; после нормализации `0/1→0`, `2→1`, `3→2`,
-  `4→3`. Это четыре внутренних уровня коррекции; соответствие именам L/M/Q/H
-  отдельно не закреплено в данном анализе.
-- Длина `len` — `u16le`. Важное отличие: она **обрезается до 128 перед чтением**.
-  При объявлении 200 будет прочитано только 128 байт, оставшиеся станут командами.
+- `scale=0..12`. Zero passes the initial check but is not a useful print size;
+  generating an image requires positive values.
+- `ecc=0..4` or ASCII `30..34`; after normalization, `0/1→0`, `2→1`, `3→2`,
+  `4→3`. These are four internal correction levels; this analysis does not
+  separately establish their mapping to L/M/Q/H.
+- Length `len` is `u16le`. A significant difference: it is **clamped to 128 before
+  reading**. If 200 is declared, only 128 bytes are read; the rest become commands.
 
-Недопустимый `scale` прекращает обработку до чтения остальных полей;
-недопустимый `ecc` — до чтения длины. Текст/бинарное содержимое передаётся
-внутреннему QR-кодировщику `@0x2f14`, результат — растеризатору `@0x7fa8`.
-Он центрирует QR по собственной формуле с учётом текущего cursor; `ESC a`
-не является его общим переключателем выравнивания. Ответа `FF01` нет.
+An invalid `scale` stops processing before the remaining fields are read; an
+invalid `ecc` stops it before reading the length. Text/binary content goes to the
+internal QR encoder at `@0x2f14`, and the result to the rasterizer at `@0x7fa8`.
+It centers the QR code using its own formula and the current cursor; `ESC a` is
+not its general alignment control. There is no `FF01` response.
 
-## 9. Задание печати и смысл `AA`, `OK`, `RE`
+## 9. Print jobs and the meaning of `AA`, `OK`, and `RE`
 
-Поток проходит три очереди:
+The stream passes through three queues:
 
 ```text
 FF02 writes
-    → приёмное кольцо: 8192 байта
-    → парсер / растр / текст / QR
-    → кольцо 48 строк: 48 байт точек + 1 служебный байт на строку
-    → очередь 24 элементов, до 6 фаз на элемент
-    → таймер / двигатель / головка
+    → receive ring buffer: 8192 bytes
+    → parser / raster / text / QR
+    → 48-row ring buffer: 48 bytes of dots + 1 control byte per row
+    → 24-entry queue, up to 6 phases per entry
+    → timer / motor / print head
 ```
 
-Кредиты относятся к первой очереди. Наличие свободных входных байт не означает,
-что последняя строка уже физически напечатана.
+Credits apply to the first queue. Free input bytes do not mean the last row has
+already been physically printed.
 
-### Начало: `10 ff fe 01`
+### Start: `10 ff fe 01`
 
-Устанавливает `RAM.u8[0x2011a]=1`, без ответа. Worker `@0x8c94` использует этот
-флаг как одно из условий запуска печати наряду с непустой очередью и отсутствием
-блокирующего состояния. Команда не сбрасывает все настройки и не требует
-12 дополнительных нулей. Эти нули не поглощаются её обработчиком.
+Sets `RAM.u8[0x2011a]=1`, without a response. The worker at `@0x8c94` uses this flag
+as one of the conditions for starting printing, along with a nonempty queue and
+no blocking state. The command does not reset all settings or require 12 additional
+zeros. Its handler does not consume those zeros.
 
-### Поиск следующей страницы: `0c` / `1d 0c`
+### Next-page search: `0c` / `1d 0c`
 
-После четырёх строк подачи `@0x3950` добавляет специальную строку с тегом `3d`
-и устанавливает `RAM.u8[0x20004]=1`. Когда тег достигает исполнительной очереди,
-таймер `@0x65d4` включает поиск границы бумаги через `@0x67f0`.
-Успешный переход его состояния к 5 устанавливает `RAM.u8[0x20109]=1`.
+After four feed rows, `@0x3950` adds a special row with tag `3d` and sets
+`RAM.u8[0x20004]=1`. When the tag reaches the execution queue, the timer at
+`@0x65d4` starts a paper-boundary search through `@0x67f0`. A successful transition
+to state 5 sets `RAM.u8[0x20109]=1`.
 
-Это отдельная механическая операция. Обычный растровый блок имеет тег `3e`,
-текст — `3f`, пустая подача — `3c`, QR — `38`. Теги находятся только во внутренних
-очередях; посылать их отдельными байтами по BLE не нужно.
+This is a separate mechanical operation. An ordinary raster block has tag `3e`,
+text `3f`, blank feed `3c`, and QR `38`. These tags exist only in internal queues;
+they must not be sent as separate bytes over BLE.
 
-### Конец: `10 ff fe 45`
+### End: `10 ff fe 45`
 
-Обработчик `@0x6504` делает следующее:
+The handler at `@0x6504` does the following:
 
 ```text
-RAM[0x20003] = 1  # встречен маркер конца
-если RAM[0x20004] != 0:
+RAM[0x20003] = 1  # end marker encountered
+if RAM[0x20004] != 0:
     RAM[0x20004] = 0
-    немедленного ответа нет
-иначе:
+    no immediate response
+else:
     FF01 ← aa
 ```
 
-Таким образом, `AA` — **прямой ответ ветви маркера**, без ожидания освобождения
-всех очередей и остановки двигателя. Называть его «печать завершена» нельзя.
+Thus, `AA` is a **direct response from the marker branch**, without waiting for all
+queues to drain or the motor to stop. It must not be called “printing complete”.
 
-Когда потребитель строк видит пустой текущий слот, он вызывает `@0xa11c`.
-Тот дополнительно требует `RAM.u32[0x20128]==0` и пустую очередь фаз, а затем:
+When the row consumer sees an empty current slot, it calls `@0xa11c`. This function
+also requires `RAM.u32[0x20128]==0` and an empty phase queue, then:
 
-| Условие                                         | Действие                          |
-| ----------------------------------------------- | --------------------------------- |
-| `RAM[0x20109] == 1`                             | Сбросить флаг; `FF01 ← OK`        |
-| Иначе `RAM[0x2010a] == 1` и `RAM[0x20003] == 1` | Сбросить первый флаг; `FF01 ← RE` |
-| Иначе                                           | Нет ответа                        |
+| Condition                                              | Action                            |
+| ------------------------------------------------------ | --------------------------------- |
+| `RAM[0x20109] == 1`                                    | Clear the flag; `FF01 ← OK`       |
+| Otherwise, `RAM[0x2010a] == 1` and `RAM[0x20003] == 1` | Clear the first flag; `FF01 ← RE` |
+| Otherwise                                              | No response                       |
 
-`OK` связан с отмеченным успешным поиском страницы и освобождением исполнительных
-очередей; наличие `fe 45` для этой ветви не требуется. Для `RE` условие отправки
-подтверждено, но источник установки `RAM 0x2010a` и достижимость ветви при обычной
-BLE-печати не установлены. Это **не доказанный универсальный код «нет бумаги»
-или «ошибка печати»**. Все перечисленные условия ответа проверены изолированно;
-принудительная установка флага в тесте не доказывает его достижимость на устройстве.
+`OK` is associated with a recorded successful page search and drained execution
+queues; this branch does not require `fe 45`. For `RE`, the send condition is
+confirmed, but the source that sets `RAM 0x2010a` and the branch's reachability
+during ordinary BLE printing are unknown. It is **not a proven universal “out of
+paper” or “print error” code**. All listed response conditions were checked in
+isolation; forcing a flag in a test does not establish its reachability on a device.
 
-Следующий байт верхнего уровня после `fe 45` проходит через `@0x4350`, который
-сбрасывает и флаг конца `0x20003`, и разрешение старта `0x2011a`. Поэтому
-последующий status query не является нейтральным по отношению к этому автомату.
-Нельзя добавлять произвольный опрос после `fe 45` и считать его безусловным
-барьером завершения. Нужен учёт состояния задания, очередей и следующего `fe 01`.
+The next top-level byte after `fe 45` passes through `@0x4350`, which clears both
+the end flag at `0x20003` and start permission at `0x2011a`. A subsequent status
+query is therefore not neutral to this state machine. Arbitrary polling after
+`fe 45` cannot be treated as an unconditional completion barrier. Job state,
+queues, and the next `fe 01` must be taken into account.
 
-### Последовательность обычного растрового задания
+### Ordinary raster job sequence
 
-Следующий пример показывает порядок команд, вытекающий из кода; физически на V1.22
-он в этой работе не проверялся:
+The following example shows the command order implied by the code; it was not
+physically tested on V1.22 in this work:
 
 ```text
-BLE: подписки FF01 и FF03, получение начальных кредитов
-FF02 → 10 ff 20 f1                         # запрос версии
+BLE: subscribe to FF01 and FF03, receive initial credits
+FF02 → 10 ff 20 f1                         # version query
 FF01 ← ASCII "V1.22_203dpi"
-FF02 → 10 ff 10 00 01                      # плотность raw=1
+FF02 → 10 ff 10 00 01                      # raw density=1
 FF01 ← 4f 4b
-FF02 → 10 ff fe 01                         # разрешить запуск
-FF02 → 1b 61 00                            # слева
-FF02 → 1d 76 30 00 30 00 hL hH DATA        # 48*h байт
-FF02 → 1b 4a n                             # необязательная подача
-FF02 → 10 ff fe 45                         # маркер конца
-FF01 ← aa                                 # если не был поставлен маркер страницы
+FF02 → 10 ff fe 01                         # allow startup
+FF02 → 1b 61 00                            # left alignment
+FF02 → 1d 76 30 00 30 00 hL hH DATA        # 48*h bytes
+FF02 → 1b 4a n                             # optional feed
+FF02 → 10 ff fe 45                         # end marker
+FF01 ← aa                                 # if no page marker was queued
 ```
 
-Каждая стрелка FF02 обозначает логическую команду, а не требование одной ATT write.
-Большое `DATA` разбивается на согласованные с BLE порции с учётом кредитов.
-Для этикеток отдельный `0c`/`1d 0c` перед концом меняет поведение, как описано выше.
+Each FF02 arrow denotes a logical command, not a requirement for a single ATT write.
+Large `DATA` bodies are split into BLE-compatible chunks with credit accounting.
+For labels, a separate `0c`/`1d 0c` before the end changes behavior as described above.
 
-### Плотность и зависимость от заполнения строки
+### Density and dependence on row coverage
 
-Функция `@0x7ad4` переводит raw-уровни `0,1,2` в коэффициенты `65,110,155`,
-затем использует дополнительный табличный множитель. По одному коэффициенту нельзя
-гарантировать порядок физической темноты на другой ревизии принтера.
+The function at `@0x7ad4` maps raw levels `0,1,2` to factors `65,110,155`, then uses
+an additional table multiplier. A single factor cannot guarantee the physical
+darkness ordering on another printer revision.
 
-Функция `@0x4ae4` суммирует веса 48 байт строки по таблице `@0x13000`.
-Для непустой строки `(sum-1)>>6` выбирает один из шести обработчиков по
+The function at `@0x4ae4` sums weights for the row's 48 bytes using the table at
+`@0x13000`. For a nonempty row, `(sum-1)>>6` selects one of six handlers through
 `@0x13134`: `0x7d7c`, `0x7db0`, `0x7df4`, `0x7e50`, `0x7ea4`, `0x7f10`.
-Они создают 1–6 маскированных подстрок; двухфазный вариант использует `55/aa`.
-Полностью чёрная строка даёт сумму 384 и шесть фаз. Это объясняет наличие
-внутренней зависимости исполнения от заполнения без дополнительных BLE-команд.
+They create 1–6 masked subrows; the two-phase variant uses `55/aa`. A solid black
+row yields a sum of 384 and six phases. This explains why execution internally
+depends on row coverage without additional BLE commands.
 
-Таблица отличается от точного popcount в одном месте: вес байта `f4` равен 7,
-хотя в нём пять единиц. Причина неизвестна. Связывать эту аномалию или число фаз
-с конкретным физическим дефектом печати без измерения нельзя.
+The table differs from an exact popcount in one place: byte `f4` has weight 7,
+although it contains five set bits. The reason is unknown. Neither this anomaly
+nor the phase count can be linked to a specific physical print defect without
+measurement.
 
-## 10. Служебные кадры и обновление через тот же BLE-поток
+## 10. Maintenance frames and updates over the same BLE stream
 
-В BLE-ветви `10 ff e0 aa aa` и `10 ff ee aa aa` включают флаг
-`RAM.u8[0x200e0]=1`. После этого `ESC 10` обрабатывается как кадр:
+In the BLE branch, `10 ff e0 aa aa` and `10 ff ee aa aa` set the flag
+`RAM.u8[0x200e0]=1`. After that, `ESC 10` is processed as a frame:
 
 ```text
 1b 10 L:u16be outer0 outer1 BODY[L] CHECKSUM:u8
 ```
 
-Полная длина — `L+7`. `CHECKSUM` равен сумме **всех предшествующих байт кадра
-по модулю 256**, включая `1b 10`, длину и два outer-байта. Это простая сумма,
-не CRC и не подпись. Outer-байты при разборе `@0x6778` не интерпретируются;
-формирователь ответа `@0x9c48` выставляет оба в ноль.
+The total length is `L+7`. `CHECKSUM` is the sum of **all preceding frame bytes
+modulo 256**, including `1b 10`, the length, and the two outer bytes. It is a simple
+sum, not a CRC or signature. The parser at `@0x6778` does not interpret the outer
+bytes; the response formatter at `@0x9c48` sets both to zero.
 
-Читатель `@0x648c` ограничен 320 байтами; валидатор требует полную длину
-**8..320**. При ошибке общей длины/префикса/checksum он выключает служебный
-режим. Ответ формируется с байтом ошибки `02`, но при ошибке в самом заголовке
-не все поля контекста ответа гарантированно заданы.
+The reader at `@0x648c` is limited to 320 bytes; the validator requires a total
+length of **8..320**. A total-length/prefix/checksum error disables maintenance
+mode. A response is constructed with error byte `02`, but errors in the header
+itself leave some response context fields without guaranteed values.
 
-Внутреннее тело разбирается `@0x2ac4`:
+The inner body is parsed by `@0x2ac4`:
 
 ```text
 cmd:u8 kind:u8 reserved0:u8 reserved1:u8 P:u16be PAYLOAD[P]
 ```
 
-Обработчик ограничивает `P≤300`. Внешняя и внутренняя длины не проверяются
-на равенство друг другу. Корректный сформированный запрос должен иметь
-`L=6+P`, полную длину `13+P`; максимум при `P=300` — 313 байт.
-В ответах `kind=01`, reserved-байты нулевые. Разбиение таких кадров на BLE writes
-возможно на транспортном уровне; это не увеличивает размер буфера кадра.
+The handler limits `P≤300`. The outer and inner lengths are not checked for
+consistency. A correctly formed request must have `L=6+P` and total length `13+P`;
+the maximum at `P=300` is 313 bytes. Responses use `kind=01` and zero reserved
+bytes. These frames can be split across BLE writes at the transport layer; that
+does not increase the frame buffer size.
 
-Полный пример идентификации после включения режима, проверенный исполнением
-цепочки reader → validator → router → formatter:
+Complete identification example after enabling the mode, verified by executing
+the reader → validator → router → formatter chain:
 
 ```text
-запрос: 1b 10 00 06 00 00 01 00 00 00 00 00 32
-ответ:  1b 10 00 0f 00 00 02 01 00 00 00 09 00 50 52 3a 41 36 5f 53 44 8f
+request:  1b 10 00 06 00 00 01 00 00 00 00 00 32
+response: 1b 10 00 0f 00 00 02 01 00 00 00 09 00 50 52 3a 41 36 5f 53 44 8f
 ```
 
-Внутренний router `@0x2b3e`:
+Internal router at `@0x2b3e`:
 
-| `cmd`              | Payload запроса                             | Действие / payload ответа                                                                        |
+| `cmd`              | Request payload                             | Action / response payload                                                                        |
 | ------------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `01`, `02`         | Не используется обработчиком                | Ответ с `cmd=02`, `00` + ASCII `PR:A6_SD` (9 байт)                                               |
-| `03`               | `type:u8 start:u32be end:u32be`             | Для `type=0` подготовка области обновления; ответ — один raw-код результата. Иной type даёт `03` |
-| `04`               | `type:u8 index:u32be size:u16be data[size]` | Для `type=0` запись блока; ответ — один raw-код. Иной type даёт `03`                             |
-| `06`               | `type:u8 a:u32be b:u32be`                   | Ответ `00 + sum:u32be`; для `type=0` сумма байт подготовленного диапазона, иначе ноль            |
-| `07`               | Не используется обработчиком                | Установить флаг загрузки, сохранить служебные данные/конфигурацию и вызвать сброс                |
-| `00`, `05`, прочие | Не используется                             | Отдельного обработчика/нормального ответа не обнаружено                                          |
+| `01`, `02`         | Not used by the handler                     | Response with `cmd=02`, `00` + ASCII `PR:A6_SD` (9 bytes)                                        |
+| `03`               | `type:u8 start:u32be end:u32be`             | For `type=0`, prepare the update area; respond with one raw result code. Other types return `03` |
+| `04`               | `type:u8 index:u32be size:u16be data[size]` | For `type=0`, write a block; respond with one raw code. Other types return `03`                  |
+| `06`               | `type:u8 a:u32be b:u32be`                   | Response `00 + sum:u32be`; for `type=0`, the byte sum of the prepared range, otherwise zero      |
+| `07`               | Not used by the handler                     | Set a boot flag, save maintenance data/configuration, and trigger a reset                        |
+| `00`, `05`, others | Not used                                    | No dedicated handler/normal response found                                                       |
 
-Детали, которые удалось установить без выполнения операций над устройством:
+Details established without executing these operations on the device:
 
-- Подготовка `@0x52b8` использует фиксированное начало flash `0x01048000`,
-  длину `end-start`, обнуляет индекс блока и вызывает стирание области размером
-  `0x20000`. Переданные start/end не становятся произвольным адресом записи.
-- Запись `@0x5274` требует совпадения `index` с ожидаемым счётчиком и кратности
-  текущего адреса и размера четырём. Несовпадение индекса даёт `07`, выравнивания —
-  `04`, с выключением служебного режима. После вызова записи увеличивает адрес
-  на `size`, индекс на один и возвращает `00`.
-- `@0x525c` действительно суммирует байты уже подготовленного диапазона;
-  переданные поля `a/b` внутри этой функции не используются. Это не доказанная
-  проверка криптографической целостности образа.
-- Обработчики не подтверждают достаточность всех вложенных размеров относительно
-  внешнего кадра. Нельзя полагаться на них как на валидатор входных пакетов.
-- ROM-часть применения обновления и аппаратная совместимость образов здесь
-  не восстановлены. Этот раздел фиксирует устройство протокола и побочные
-  эффекты, а не проверенную инструкцию перепрошивки.
+- Preparation at `@0x52b8` uses the fixed flash start `0x01048000`, length
+  `end-start`, resets the block index, and calls an erase of an area of size
+  `0x20000`. Supplied start/end values do not become arbitrary write addresses.
+- Writing at `@0x5274` requires `index` to match the expected counter and both the
+  current address and size to be multiples of four. An index mismatch returns
+  `07`; an alignment mismatch returns `04`, disabling maintenance mode. After the
+  write call, it increments the address by `size`, the index by one, and returns
+  `00`.
+- `@0x525c` does sum the bytes of the already prepared range; the supplied `a/b`
+  fields are not used inside this function. This is not established cryptographic
+  image integrity verification.
+- The handlers do not verify that all nested sizes fit within the outer frame.
+  They must not be relied on to validate input packets.
+- The ROM portion that applies the update and hardware compatibility of images
+  were not reconstructed here. This section records the protocol structure and
+  side effects, rather than providing a verified flashing procedure.
 
-В рабочем клиенте этот режим должен быть отделён от обычных информационных
-запросов: команды `03/04/07` внутри него меняют flash и состояние загрузки.
-В рамках исследования они на принтер не отправлялись.
+A production client must keep this mode separate from ordinary information
+queries: its commands `03/04/07` change flash and boot state. They were not sent to
+the printer during this research.
 
-## 11. Воспроизведение и карта доказательств
+## 11. Reproduction and evidence map
 
-Инструменты закреплены существующим `flake.lock`, ревизия nixpkgs
-`419fe0f449b3fbe3bdd53d9840288db4509ec32e`. Для дизассемблирования используется
-Python с Capstone, для проверок — Unicorn 2.1.4. Инструменты находятся в отдельном
-dev shell `firmware`, определённом в [flake.nix](../flake.nix).
+Tools are pinned by the existing `flake.lock`, nixpkgs revision
+`419fe0f449b3fbe3bdd53d9840288db4509ec32e`. Disassembly uses Python with Capstone;
+checks use Unicorn 2.1.4. The tools are in the separate `firmware` dev shell defined
+in [flake.nix](../flake.nix).
 
-Исследовательские скрипты, исходный образ, полные листинги и JSON находятся
-в исключённой из Git папке `storage/firmware/`. Этот документ самодостаточен:
-ссылки на локальные артефакты требуют сохранённой папки, но хеш образа, форматы
-и опорные смещения включены в текст.
+Research scripts, the original image, full listings, and JSON files are in
+`storage/firmware/`, which is excluded from Git. This document is self-contained:
+local artifact links require the retained directory, but the image hash, formats,
+and reference offsets are included in the text.
 
 ```sh
 nix develop .#firmware -c python3 storage/firmware/analyze_v122.py
@@ -806,53 +816,54 @@ nix develop .#firmware -c python3 storage/firmware/verify_protocol_v122.py
 nix develop .#firmware -c python3 storage/firmware/analyze_v122.py --slice 0x4ec8 0x5208
 ```
 
-| Область                          | Смещения в исходном образе                                            |
-| -------------------------------- | --------------------------------------------------------------------- |
-| Начальные RAM/GATT-структуры     | Таблица загрузки `0x138c8`, сжатые данные `0x138e8`, декодер `0x0a3e` |
-| Регистрация BLE, advertising     | `0x2236–0x247c`                                                       |
-| Приём FF02, подписка FF03        | `0x1714–0x1814`                                                       |
-| Кредиты, кольцо                  | `0x16ec`, `0x81a8`, `0xa200`, `0xa2b0`, `0xafe8–0xb0ac`               |
-| Основной parser / vendor-router  | `0x9764`, `0x4350`, `0x275c`, `0x4ec8`                                |
-| Ответы FF01                      | `0x2570`, `0x25d8`, `0x2630`                                          |
-| Версия, идентификация, настройки | `0x7b58`, `0x20d0`, `0x404c`, `0x55e0`, `0x84c8`                      |
-| Статус и датчики                 | `0x4420`, `0x0c4c`, `0x0c80`, `0x1f2c`, `0x49a0`                      |
-| Растр и очередь строк            | `0x6c78`, `0x7050`, `0x81b8`, `0x8210`, `0x6bf8`                      |
-| Сжатый растр                     | `0x1ddc`, `0x1ee8`, `0xa350–0xa39c`, `0xb394`, `0xb924`               |
-| QR                               | `0x291c`, `0x2f14`, `0x7fa8`                                          |
-| Маркеры и завершение             | `0x3950`, `0x6504`, `0x65d4`, `0x67f0`, `0x852c`, `0xa11c`            |
-| Очередь фаз и запуск печати      | `0x4ae4`, `0x4b34`, `0x6540`, `0x8c94`, `0x9878`                      |
-| Служебные кадры                  | `0x648c`, `0x6778`, `0xb718`, `0x2ac4`, `0x2b3e`, `0x9c48`            |
+| Area                              | Offsets in the original image                                     |
+| --------------------------------- | ----------------------------------------------------------------- |
+| Initial RAM/GATT structures       | Load table `0x138c8`, compressed data `0x138e8`, decoder `0x0a3e` |
+| BLE registration, advertising     | `0x2236–0x247c`                                                   |
+| FF02 reception, FF03 subscription | `0x1714–0x1814`                                                   |
+| Credits, ring buffer              | `0x16ec`, `0x81a8`, `0xa200`, `0xa2b0`, `0xafe8–0xb0ac`           |
+| Main parser / vendor router       | `0x9764`, `0x4350`, `0x275c`, `0x4ec8`                            |
+| FF01 responses                    | `0x2570`, `0x25d8`, `0x2630`                                      |
+| Version, identification, settings | `0x7b58`, `0x20d0`, `0x404c`, `0x55e0`, `0x84c8`                  |
+| Status and sensors                | `0x4420`, `0x0c4c`, `0x0c80`, `0x1f2c`, `0x49a0`                  |
+| Raster and row queue              | `0x6c78`, `0x7050`, `0x81b8`, `0x8210`, `0x6bf8`                  |
+| Compressed raster                 | `0x1ddc`, `0x1ee8`, `0xa350–0xa39c`, `0xb394`, `0xb924`           |
+| QR                                | `0x291c`, `0x2f14`, `0x7fa8`                                      |
+| Markers and completion            | `0x3950`, `0x6504`, `0x65d4`, `0x67f0`, `0x852c`, `0xa11c`        |
+| Phase queue and print startup     | `0x4ae4`, `0x4b34`, `0x6540`, `0x8c94`, `0x9878`                  |
+| Maintenance frames                | `0x648c`, `0x6778`, `0xb718`, `0x2ac4`, `0x2b3e`, `0x9c48`        |
 
-Результаты проверок:
+Check results:
 
-- `storage/firmware/analysis-v1.22/protocol-verification.json` — перечень 813
-  успешных случаев и границы стенда.
-- `storage/firmware/analysis-v1.22/protocol-probes.json` — входы, ответы,
-  обращения к RAM, разрешённые участки машинного кода и подменённые вызовы.
-- `storage/firmware/analysis-v1.22/snippets/` — тематические листинги.
-- `storage/firmware/analysis-v1.22/protocol-tables.json` — GATT/flow-control/фазы.
-- `storage/firmware/SHA256SUMS` и `analysis-v1.22/SHA256SUMS` — целостность
-  сохранённых исследовательских артефактов.
+- `storage/firmware/analysis-v1.22/protocol-verification.json` — list of 813
+  successful cases and the harness's limitations.
+- `storage/firmware/analysis-v1.22/protocol-probes.json` — inputs, responses,
+  RAM accesses, allowed machine-code regions, and replaced calls.
+- `storage/firmware/analysis-v1.22/snippets/` — listings grouped by topic.
+- `storage/firmware/analysis-v1.22/protocol-tables.json` — GATT/flow-control/phases.
+- `storage/firmware/SHA256SUMS` and `analysis-v1.22/SHA256SUMS` — integrity of the
+  saved research artifacts.
 
-В 813 случаев входят 256 проверок диспетчеризации, по 256 проверок плотности
-и полубайтового преобразования, границы автоотключения, усечение параметров,
-идентификация, неопределённый хвост `01`, маркеры и ответы, clipping/недостача
-растра, неприменимость `ESC @`/`GS r`, BLE-пороги и переполнение, распаковка
-с несогласованными `Y/N`, границы/checksum служебного кадра и полный служебный
-запрос идентификации. Проверки не подтверждают
-радиотайминги, весь QR-кодировщик, физические единицы и работу механизмов.
+The 813 cases include 256 dispatch checks, 256 density checks, 256 nibble
+transformation checks, auto-off boundaries, parameter truncation, identification,
+the undefined tail of `01`, markers and responses, raster clipping/missing data,
+unsupported `ESC @`/`GS r`, BLE thresholds and overflow, decompression with
+inconsistent `Y/N`, maintenance frame boundaries/checksum, and a complete maintenance
+identification query. These checks do not confirm radio timings, the entire QR
+encoder, physical units, or mechanical operation.
 
-## 12. Что ещё требует подтверждения
+## 12. What still needs confirmation
 
-1. Семантика параметра `02 182`, согласование с MTU и разбиение ответов SDK.
-2. Физическое назначение raw-полей `10 02`, `80`, `81`, `f8`, PWM `05/06`;
-   единицы скорости, измерения `50 f2` и таймера автоотключения.
-3. Достижимость ветви `RE` и поведение очередей при реальных паузах, окончании
-   бумаги, открытии крышки и продолжении задания после `fe 45`.
-4. Полная карта текстовых ресурсов и поведение QR при крайних параметрах.
-5. Длительная передача сжатых изображений и все варианты потока DEFLATE.
-6. Соответствие этих результатов установленной V1.36: оно требует её образа
-   либо адресных измерений на аппарате, а не сравнения одних номеров версий.
+1. The semantics of parameter `02 182`, its relationship to MTU, and SDK response
+   fragmentation.
+2. The physical purpose of raw fields `10 02`, `80`, `81`, `f8`, and PWM `05/06`;
+   units of speed, measurement `50 f2`, and the auto-off timer.
+3. Reachability of the `RE` branch and queue behavior during real pauses, paper
+   exhaustion, cover opening, and job continuation after `fe 45`.
+4. The complete text resource map and QR behavior with edge-case parameters.
+5. Sustained compressed image transmission and all DEFLATE stream variants.
+6. Applicability to the installed V1.36: this requires its image or targeted device
+   measurements, rather than a comparison of version numbers alone.
 
-Эти пробелы не мешают описать основной байтовый контракт V1.22, но ограничивают
-выводы о физическом результате и совместимости других устройств.
+These gaps do not prevent describing V1.22's core byte-level contract, but they
+limit conclusions about physical results and compatibility with other devices.
