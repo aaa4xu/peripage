@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { httpsDevServer } from './scripts/https-dev-server.ts';
 import settings from './project.inlang/settings.json' with { type: 'json' };
 
 const { baseLocale, locales } = settings;
@@ -10,6 +11,7 @@ const base = (process.env.BASE_PATH ?? '') as '' | `/${string}`;
 
 export default defineConfig({
 	plugins: [
+		httpsDevServer(),
 		sveltekit({
 			compilerOptions: {
 				// Force runes mode for the project, except for libraries. Can be removed in svelte 6.
