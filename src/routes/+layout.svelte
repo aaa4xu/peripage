@@ -3,11 +3,15 @@
 	import { page } from '$app/state';
 	import { locales, localizeHref } from '$lib/paraglide/runtime';
 	import favicon from '$lib/assets/favicon.svg';
+	import faviconDark from '$lib/assets/favicon-dark.svg';
 
 	let { children } = $props();
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head>
+	<link rel="icon" type="image/svg+xml" href={favicon} media="(prefers-color-scheme: light)" />
+	<link rel="icon" type="image/svg+xml" href={faviconDark} media="(prefers-color-scheme: dark)" />
+</svelte:head>
 {@render children()}
 
 <div style="display:none">

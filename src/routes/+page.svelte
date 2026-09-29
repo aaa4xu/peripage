@@ -122,8 +122,8 @@
 <svelte:window onhashchange={readHash} onpagehide={() => client.disconnect()} />
 
 <svelte:head>
-	<title>PeriPage — {m.printer_title()}</title>
-	<meta name="description" content={m.printer_intro()} />
+	<title>{m.page_title()}</title>
+	<meta name="description" content={m.preview_description()} />
 </svelte:head>
 
 <div class="app-shell">

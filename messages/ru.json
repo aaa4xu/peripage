@@ -1,6 +1,7 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
 	"hello_world": "Hello, {name} from ru!",
+	"page_title": "PeriPage.js — печать этикеток из браузера по Bluetooth",
 	"printer_title": "Подключение к принтеру",
 	"printer_transport": "Подключение по Bluetooth",
 	"printer_intro": "Подключите PeriPage, чтобы увидеть заряд и сведения об устройстве.",
@@ -61,6 +62,7 @@
 	"print_width_hint": "Этот принтер поддерживает изображения шириной до 384 пикселей.",
 	"print_error": "Не удалось передать изображение. Проверьте подключение принтера.",
 	"preview_title": "Превью",
+	"preview_description": "Печатайте этикетки с текстом, изображениями и QR-кодами на PeriPage A6 по Bluetooth. Откройте шаблон, проверьте превью и отправьте на печать из браузера.",
 	"preview_empty": "Здесь будет ваша этикетка",
 	"preview_empty_hint": "Откройте ссылку с шаблоном этикетки или посмотрите пример.",
 	"preview_example": "Показать пример",
