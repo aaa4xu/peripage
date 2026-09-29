@@ -16,6 +16,23 @@
           default = pkgs.mkShell {
             packages = [ pkgs.bun ];
           };
+
+          # Firmware research: download and inspect images, apps, and installers.
+          firmware = pkgs.mkShell {
+            packages = [
+              pkgs.curl
+              pkgs.file
+              pkgs.innoextract
+              pkgs.jadx
+              pkgs.openssl
+              (pkgs.python3.withPackages (python: [
+                python.androguard
+                python.capstone
+                python.unicorn
+              ]))
+              pkgs.unzip
+            ];
+          };
         });
     };
 }

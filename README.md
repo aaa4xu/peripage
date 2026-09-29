@@ -11,6 +11,17 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
+Основной dev shell содержит Bun. Инструменты исследования прошивок доступны
+в отдельном окружении:
+
+```sh
+nix develop .#firmware
+```
+
+Оно включает `curl`, `file`, `innoextract`, `jadx`, `openssl`, `unzip` и Python с
+Androguard, Capstone и Unicorn. Команды для воспроизведения анализа находятся в
+[описании BLE-протокола V1.22](docs/ble_protocol_v1.22.md#11-воспроизведение-и-карта-доказательств).
+
 ## Подключение к принтеру
 
 Открой приложение через `localhost` или HTTPS в браузере с Web Bluetooth
