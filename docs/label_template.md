@@ -26,7 +26,7 @@ disable printing.
 			"width": 200,
 			"height": 40,
 			"text": "Resistors",
-			"fontSize": 24,
+			"fontSize": "auto",
 			"fontWeight": 700
 		},
 		{
@@ -86,11 +86,17 @@ and requires neither a download from another site nor CORS configuration.
 One layer is one line, including an empty line. Line breaks are not supported:
 add a separate layer for each line.
 
-- `fontSize` is the font size in canvas dots, from 1 to 256; fractional values are allowed.
-- **The size is applied as given. There is no automatic fitting, shrinking, or wrapping.**
+- `fontSize` is required: either a number from 1 to 256 (fractional values are allowed)
+  or `"auto"`.
+- A numeric size is applied as given; content outside the block is clipped.
+- `"auto"` selects the largest whole-dot font size from 1 to 256 that fits both the
+  block's width and height. It measures the loaded font, including glyph overhangs,
+  accents, and the font's line height. Short lines can grow; long lines shrink.
+  If the line cannot fit even at size 1, rendering reports a dimensions error.
+  Empty lines remain blank. Text does not wrap in either mode.
 - `fontWeight`: `400`, `500`, or `700`; defaults to `400`.
 - `align`: `left`, `center`, or `right`; defaults to `left`.
-- The line is vertically centered in its block. Content outside the block is clipped.
+- The line is vertically centered in its block.
 - Text is black. The application bundles **Noto Sans Variable**, including Cyrillic.
   Rendering waits for the font to load before enabling printing.
 
@@ -124,7 +130,8 @@ and `HomeboxItemLink.swift` from the neighboring `peripage` project:
   `HTTPS://HB.JJFF.CLOUD/A/000014` produces a 25×25 matrix with 3×3-dot modules.
 
 The browser uses Noto Sans, while Swift used the system AppKit font, so the glyphs
-are not bit-for-bit identical. Swift's font size fitting was intentionally omitted.
+are not bit-for-bit identical. The example keeps fixed sizes; set any text layer's
+`fontSize` to `"auto"` to fit replacement text within the same block.
 The Homebox API, credentials, and field selection logic are outside this format's
 scope.
 
@@ -153,7 +160,10 @@ import example from './src/lib/label/example.json';
 
 const template = parseTemplate(example);
 const title = template.layers.find((layer) => layer.type === 'text');
-if (title?.type === 'text') title.text = 'M3 nuts';
+if (title?.type === 'text') {
+	title.text = 'M3 nuts';
+	title.fontSize = 'auto';
+}
 
 const url = new URL('https://example.com/peripagejs/ru/');
 url.hash = encodeTemplateHash(template);

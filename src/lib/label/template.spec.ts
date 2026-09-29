@@ -40,6 +40,12 @@ describe('JSON label templates', () => {
 		]);
 	});
 
+	it.each(['auto', 1, 24.5, 256])('preserves fontSize %j through a template link', (fontSize) => {
+		const template = parseTemplate({ ...label, layers: [{ ...text, fontSize }] });
+		expect(template.layers[0]).toMatchObject({ fontSize });
+		expect(decodeTemplateHash(encodeTemplateHash(template))).toEqual(template);
+	});
+
 	it('keeps blank text lines and supports an empty canvas', () => {
 		expect(parseTemplate({ ...label, layers: [{ ...text, text: '' }] }).layers[0]).toMatchObject({
 			text: ''
@@ -61,7 +67,10 @@ describe('JSON label templates', () => {
 		{ ...label, layers: [{ ...text, x: -1 }] },
 		{ ...label, layers: [{ ...text, x: 300 }] },
 		{ ...label, layers: [{ ...text, fontSize: '24' }] },
+		{ ...label, layers: [{ ...text, fontSize: 'AUTO' }] },
+		{ ...label, layers: [{ ...text, fontSize: undefined }] },
 		{ ...label, layers: [{ ...text, fontSize: 0 }] },
+		{ ...label, layers: [{ ...text, fontSize: 257 }] },
 		{ ...label, layers: [{ ...text, minFontSize: 8 }] },
 		{ ...label, layers: [{ ...text, fontWeight: 900 }] },
 		{ ...label, layers: [{ ...text, align: 'justify' }] },

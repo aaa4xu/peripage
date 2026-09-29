@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import jsQR from 'jsqr';
 import { a6Raster, type Raster } from '$lib/peripagejs';
 import { exampleTemplate } from './example';
@@ -83,6 +83,75 @@ describe('label rendering in the browser', () => {
 		).toBe(false);
 	});
 
+	it.each([
+		{ text: 'MMMMMMMMMMMM', width: 120, height: 52, fontWeight: 400, align: 'left' },
+		{ text: 'M', width: 160, height: 20, fontWeight: 700, align: 'center' },
+		{ text: 'Ёжики и чай', width: 140, height: 36, fontWeight: 500, align: 'right' },
+		{ text: 'Áyj\u0301\u0301\u0301', width: 104, height: 32, fontWeight: 400, align: 'center' },
+		{ text: 'M', width: 384, height: 400, fontWeight: 400, align: 'left' }
+	] as const)('fits auto-sized text into its block: %j', async (properties) => {
+		const text: TextLayer = { type: 'text', x: 8, y: 8, fontSize: 'auto', ...properties };
+		const draws: { font: string; metrics: TextMetrics; x: number; y: number }[] = [];
+		const fillText = CanvasRenderingContext2D.prototype.fillText;
+		const spy = vi
+			.spyOn(CanvasRenderingContext2D.prototype, 'fillText')
+			.mockImplementation(function (this: CanvasRenderingContext2D, value, x, y, maxWidth) {
+				draws.push({ font: this.font, metrics: this.measureText(value), x, y });
+				fillText.call(this, value, x, y, maxWidth);
+			});
+		try {
+			const raster = await renderTemplate({
+				version: 1,
+				width: text.width + 16,
+				height: text.height + 16,
+				layers: [text]
+			});
+			expect(raster.data.some((byte) => byte !== 0)).toBe(true);
+			expect(draws).toHaveLength(1);
+			const { font, metrics, x, y } = draws[0];
+			const size = Number(/(\d+)px/.exec(font)![1]);
+			expect(font).toContain('Noto Sans Variable');
+			expect(size).toBeGreaterThan(8);
+			expect(size).toBeLessThanOrEqual(256);
+			// Check the actual, unclipped glyph bounds, not just the clipped raster.
+			expect(x - metrics.actualBoundingBoxLeft).toBeGreaterThanOrEqual(text.x);
+			expect(x + metrics.actualBoundingBoxRight).toBeLessThanOrEqual(text.x + text.width);
+			expect(y - metrics.actualBoundingBoxAscent).toBeGreaterThanOrEqual(text.y);
+			expect(y + metrics.actualBoundingBoxDescent).toBeLessThanOrEqual(text.y + text.height);
+			if (properties.height === 400) {
+				expect(size).toBe(256);
+			} else {
+				const probe = document.createElement('canvas').getContext('2d')!;
+				probe.font = font.replace(`${size}px`, `${size + 1}px`);
+				const larger = probe.measureText(text.text);
+				// The next whole-dot size must exceed at least one block dimension.
+				expect(
+					larger.width > text.width ||
+						larger.actualBoundingBoxLeft + larger.actualBoundingBoxRight > text.width ||
+						larger.fontBoundingBoxAscent + larger.fontBoundingBoxDescent > text.height ||
+						larger.fontBoundingBoxAscent + larger.actualBoundingBoxDescent > text.height ||
+						larger.actualBoundingBoxAscent + larger.fontBoundingBoxDescent > text.height ||
+						larger.actualBoundingBoxAscent + larger.actualBoundingBoxDescent > text.height
+				).toBe(true);
+			}
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it('reports auto text that cannot fit even at the minimum font size', async () => {
+		await expect(
+			renderTemplate({
+				version: 1,
+				width: 16,
+				height: 16,
+				layers: [
+					{ type: 'text', x: 0, y: 0, width: 1, height: 1, text: 'TOO LONG', fontSize: 'auto' }
+				]
+			})
+		).rejects.toThrow('dimensions');
+	});
+
 	it('renders Cyrillic and leaves explicitly empty text rows blank', async () => {
 		const text: TextLayer = {
 			type: 'text',
@@ -97,7 +166,7 @@ describe('label rendering in the browser', () => {
 			version: 1,
 			width: 160,
 			height: 72,
-			layers: [text, { ...text, y: 36, text: '' }]
+			layers: [text, { ...text, y: 36, text: '', fontSize: 'auto' }]
 		};
 		const raster = await renderTemplate(template);
 		expect(raster.data.slice(0, 20 * 36).some((byte) => byte > 0)).toBe(true);

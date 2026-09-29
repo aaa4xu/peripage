@@ -14,7 +14,8 @@ export interface ImageLayer extends Box {
 export interface TextLayer extends Box {
 	type: 'text';
 	text: string;
-	fontSize: number;
+	/** A fixed size in dots, or the largest whole-dot size that fits the block. */
+	fontSize: number | 'auto';
 	fontWeight?: 400 | 500 | 700;
 	align?: 'left' | 'center' | 'right';
 }
@@ -43,6 +44,7 @@ export interface LabelTemplate {
 export const MAX_DIMENSION = 4096;
 export const MAX_PIXELS = 1_048_576;
 export const MAX_JSON_LENGTH = 262_144;
+export const MAX_FONT_SIZE = 256;
 const MAX_HASH_LENGTH = MAX_JSON_LENGTH * 9 + 10;
 
 export type TemplateErrorCode = 'format' | 'dimensions' | 'too-large' | 'image' | 'qr' | 'render';
@@ -91,8 +93,9 @@ function string(value: unknown, maximum: number): string {
 	return value;
 }
 
-function fontSize(value: unknown): number {
-	if (typeof value !== 'number' || !Number.isFinite(value) || value < 1 || value > 256)
+function fontSize(value: unknown): TextLayer['fontSize'] {
+	if (value === 'auto') return value;
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 1 || value > MAX_FONT_SIZE)
 		throw new TemplateError('format');
 	return value;
 }

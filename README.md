@@ -56,9 +56,9 @@ The physical `IP-200 / V1.36_203dpi` device has separate
 
 The page accepts `#template=<JSON encoded with encodeURIComponent>`. A template
 contains the canvas dimensions and `image`, `text`, and `qr` layers with coordinates
-in printer dots. Image layers contain embedded PNGs, text uses an explicit
-`fontSize` without automatic fitting, and QR codes are generated from the supplied
-string. The old raw raster format, `#bytemap=…`, has been removed.
+in printer dots. Image layers contain embedded PNGs, text uses a numeric `fontSize`
+or `"auto"` to fit a line within its block, and QR codes are generated from the
+supplied string. The old raw raster format, `#bytemap=…`, has been removed.
 
 The “Show example” button opens a 384×115 Homebox label: a frame with beveled top
 corners, three lines on the left, and a QR code on the right. The complete example

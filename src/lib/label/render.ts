@@ -2,6 +2,7 @@ import '@fontsource-variable/noto-sans';
 import QRCode from 'qrcode';
 import type { Raster } from '$lib/peripagejs';
 import {
+	MAX_FONT_SIZE,
 	parseTemplate,
 	TemplateError,
 	type LabelTemplate,
@@ -10,7 +11,10 @@ import {
 } from './template';
 
 const FONT = '"Noto Sans Variable"';
-const font = (layer: TextLayer) => `${layer.fontWeight ?? 400} ${layer.fontSize}px ${FONT}`;
+const font = (
+	layer: TextLayer,
+	size = layer.fontSize === 'auto' ? MAX_FONT_SIZE : layer.fontSize
+) => `${layer.fontWeight ?? 400} ${size}px ${FONT}`;
 
 async function bounded<T>(operation: Promise<T>): Promise<T> {
 	let timer: ReturnType<typeof setTimeout>;
@@ -28,14 +32,40 @@ async function bounded<T>(operation: Promise<T>): Promise<T> {
 
 function drawText(context: CanvasRenderingContext2D, layer: TextLayer): void {
 	if (!layer.text) return;
-	context.font = font(layer);
-	const metrics = context.measureText(layer.text);
-	const ascent = metrics.fontBoundingBoxAscent ?? metrics.actualBoundingBoxAscent;
-	const height = ascent + (metrics.fontBoundingBoxDescent ?? metrics.actualBoundingBoxDescent);
-	const width = Math.max(
-		metrics.width,
-		metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight
-	);
+	const automatic = layer.fontSize === 'auto';
+	const measure = (size: number) => {
+		context.font = font(layer, size);
+		const metrics = context.measureText(layer.text);
+		let ascent = metrics.fontBoundingBoxAscent ?? metrics.actualBoundingBoxAscent;
+		let descent = metrics.fontBoundingBoxDescent ?? metrics.actualBoundingBoxDescent;
+		let width = Math.max(
+			metrics.width,
+			metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight
+		);
+		if (automatic) {
+			// Include ink overhangs and combining marks as well as the font's line box.
+			ascent = Math.max(ascent, metrics.actualBoundingBoxAscent);
+			descent = Math.max(descent, metrics.actualBoundingBoxDescent);
+			width =
+				Math.max(metrics.width, metrics.actualBoundingBoxRight) +
+				Math.max(0, metrics.actualBoundingBoxLeft);
+		}
+		return { metrics, ascent, height: ascent + descent, width };
+	};
+	let size = layer.fontSize;
+	if (size === 'auto') {
+		let low = 1;
+		let high = MAX_FONT_SIZE;
+		while (low <= high) {
+			const candidate = Math.floor((low + high) / 2);
+			const { width, height } = measure(candidate);
+			if (width <= layer.width && height <= layer.height) low = candidate + 1;
+			else high = candidate - 1;
+		}
+		if (high < 1) throw new TemplateError('dimensions');
+		size = high;
+	}
+	const { metrics, ascent, height, width } = measure(size);
 	const gap = layer.width - width;
 	const alignOffset = layer.align === 'right' ? gap : layer.align === 'center' ? gap / 2 : 0;
 	context.save();
