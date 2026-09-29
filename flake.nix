@@ -14,7 +14,7 @@
         in
         {
           default = pkgs.mkShell {
-            packages = [ pkgs.bun ];
+            packages = [ pkgs.bun pkgs.gh ];
           };
 
           # Firmware research: download and inspect images, apps, and installers.
