@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { tick } from 'svelte';
 import Page from './+page.svelte';
-import { browserBluetooth, PeriPageClient, type Raster } from '$lib/peripagejs';
+import { browserBluetooth, SharedPeriPageClient, type Raster } from '$lib/peripagejs';
 import { renderTemplate } from '$lib/label/render';
 import { encodeTemplateHash, TemplateError } from '$lib/label/template';
 
@@ -32,7 +32,7 @@ function deferred() {
 beforeEach(() => {
 	vi.mocked(renderTemplate).mockReset();
 	vi.mocked(browserBluetooth).mockReturnValue({ requestDevice: vi.fn() });
-	vi.mocked(PeriPageClient.prototype.print).mockResolvedValue(undefined);
+	vi.mocked(SharedPeriPageClient.prototype.print).mockResolvedValue(undefined);
 	history.replaceState(null, '', hash());
 });
 
@@ -51,7 +51,7 @@ describe('template preview and print lifecycle', () => {
 		pending.resolve(ready);
 		await expect.element(print).toBeEnabled();
 		await print.click();
-		expect(PeriPageClient.prototype.print).toHaveBeenCalledWith(ready);
+		expect(SharedPeriPageClient.prototype.print).toHaveBeenCalledWith(ready);
 		const canvas = view.container.querySelector('canvas')!;
 		expect([canvas.width, canvas.height]).toEqual([8, 1]);
 		expect(canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data[0]).toBe(0);
@@ -74,7 +74,7 @@ describe('template preview and print lifecycle', () => {
 		await first.promise;
 		await tick();
 		await view.getByRole('button', { name: 'Print', exact: true }).click();
-		expect(PeriPageClient.prototype.print).toHaveBeenCalledWith(latest);
+		expect(SharedPeriPageClient.prototype.print).toHaveBeenCalledWith(latest);
 		expect(view.container.querySelector('canvas')!.width).toBe(9);
 	});
 

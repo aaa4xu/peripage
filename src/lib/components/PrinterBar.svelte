@@ -6,10 +6,10 @@
 	import { getLocale, locales, localizeHref } from '$lib/paraglide/runtime';
 	import {
 		browserBluetooth,
-		PeriPageClient,
+		type SharedPeriPageClient,
 		type EventKind,
 		type Phase,
-		type PrinterState
+		type SharedPrinterState
 	} from '$lib/peripagejs';
 
 	let {
@@ -18,8 +18,8 @@
 		printer
 	}: {
 		hash?: string;
-		client: PeriPageClient;
-		printer: PrinterState;
+		client: SharedPeriPageClient;
+		printer: SharedPrinterState;
 	} = $props();
 	let support = $state<'checking' | 'available' | 'unsupported' | 'insecure'>('checking');
 	const active = $derived(
@@ -59,13 +59,15 @@
 		connection: m.printer_connection_error
 	};
 	const status = $derived(
-		support === 'checking'
+		support === 'checking' || !printer.ready
 			? m.printer_checking()
 			: unavailable
 				? m.printer_unsupported()
 				: printer.notice === 'lost'
 					? m.printer_lost()
-					: phases[printer.phase]()
+					: connected && printer.connection === 'remote'
+						? m.printer_shared()
+						: phases[printer.phase]()
 	);
 	const hint = $derived.by(() => {
 		if (support === 'insecure') return m.printer_insecure_hint();
@@ -133,7 +135,7 @@
 	{:else}
 		<button
 			class="primary connect-button"
-			disabled={support !== 'available'}
+			disabled={support !== 'available' || !printer.ready}
 			onclick={() => void client.connect()}
 			title={unavailable ? hint : m.printer_connect()}
 		>
@@ -207,6 +209,9 @@
 		</div>
 	</div>
 	<p class="hint" class:warning role={warning ? 'alert' : undefined}>{hint}</p>
+	{#if printer.connection === 'remote'}
+		<p class="hint">{m.printer_shared_hint()}</p>
+	{/if}
 	{#if printer.error}
 		<details class="error-details">
 			<summary>{m.printer_error_details()}</summary>

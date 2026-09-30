@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
+	import { base } from '$app/paths';
 	import { m } from '$lib/paraglide/messages';
 	import PrinterBar from '$lib/components/PrinterBar.svelte';
 	import {
 		browserBluetooth,
-		initialState,
-		PeriPageClient,
+		SharedPeriPageClient,
 		supportsRasterPrinting,
 		type Raster
 	} from '$lib/peripagejs';
@@ -20,8 +20,8 @@
 	import { exampleTemplate } from '$lib/label/example';
 	import { renderTemplate } from '$lib/label/render';
 
-	const client = new PeriPageClient();
-	let printer = $state.raw(initialState());
+	const client = new SharedPeriPageClient(base || '/');
+	let printer = $state.raw(client.state);
 	let hash = $state('');
 	let printError = $state(false);
 	let bluetoothAvailable = $state(false);
@@ -44,22 +44,28 @@
 		render: m.preview_error_render,
 		'too-large': m.preview_error_size
 	};
-	const sending = $derived(printer.phase === 'printing');
+	const sending = $derived(printer.job === 'printing');
+	const queued = $derived(printer.job === 'queued');
 	const printHint = $derived.by(() => {
 		if (sending) return m.print_sending();
+		if (queued) return m.print_queued();
 		if (preview.loading) return m.preview_rendering();
 		if (printer.phase === 'connected' && !supportsRasterPrinting(printer.info))
 			return m.print_profile_hint();
 		if (preview.raster && preview.raster.width > 384) return m.print_width_hint();
-		if (printError || printer.error) return m.print_error();
-		if (printer.phase !== 'connected') return '';
+		if (printError || printer.job === 'error') return m.print_unconfirmed();
+		if (printer.error) return m.print_error();
+		if (!printer.connection) return '';
 		if (!preview.raster) return m.print_image_hint();
-		return printer.notice === 'sent' ? m.print_sent() : '';
+		return printer.job === 'sent' ? m.print_sent() : '';
 	});
 	const canPrint = $derived(
 		bluetoothAvailable &&
-			!['choosing', 'connecting', 'reading', 'printing'].includes(printer.phase) &&
-			(printer.phase !== 'connected' || supportsRasterPrinting(printer.info)) &&
+			printer.ready &&
+			!sending &&
+			!queued &&
+			!['choosing', 'connecting'].includes(printer.phase) &&
+			(!printer.connection || supportsRasterPrinting(printer.info)) &&
 			!!preview.raster &&
 			preview.raster.width <= 384 &&
 			!preview.loading
@@ -111,6 +117,7 @@
 		const unsubscribe = client.subscribe((next) => {
 			printer = next;
 		});
+		client.start();
 		return () => {
 			generation++;
 			unsubscribe();
@@ -119,7 +126,11 @@
 	});
 </script>
 
-<svelte:window onhashchange={readHash} onpagehide={() => client.disconnect()} />
+<svelte:window
+	onhashchange={readHash}
+	onpagehide={() => client.stop()}
+	onpageshow={() => client.start()}
+/>
 
 <svelte:head>
 	<title>{m.page_title()}</title>
@@ -167,7 +178,7 @@
 				class="print-button"
 				disabled={!canPrint}
 				onclick={() => void print()}
-				aria-label={sending ? m.print_sending() : m.print_action()}
+				aria-label={sending ? m.print_sending() : queued ? m.print_queued() : m.print_action()}
 				title={printHint || m.print_action()}
 			>
 				<svg viewBox="0 0 24 24" aria-hidden="true"

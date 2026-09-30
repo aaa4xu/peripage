@@ -5,7 +5,8 @@ SvelteKit settings live in `vite.config.ts`.
 
 ## Library and application
 
-- `src/lib/peripagejs/` — BLE client, protocol, device state, and the `Raster` type.
+- `src/lib/peripagejs/` — BLE client, shared tab connection, protocol, device state,
+  and the `Raster` type.
   This code uses only relative imports and does not depend on the application,
   SvelteKit, translations, or label rendering.
 - `src/lib/components/` — application UI components.
@@ -90,8 +91,11 @@ Clicking the print icon opens the Bluetooth printer picker if no connection
 exists. After connecting and reading device information, the application
 automatically sends the image that was open when the button was clicked. Canceling
 the picker or failing to connect also cancels printing. With an existing
-connection, transmission starts immediately. Repeated clicks, information refreshes,
-and other jobs are blocked during transmission.
+connection, transmission starts immediately. Tabs automatically reuse an existing
+connection from another tab of this application. Print jobs and information
+refreshes share one queue; each tab can have one unfinished print job. Repeated
+clicks in that tab are ignored until it finishes. A queued job retains the image
+that was open when the button was clicked, even if the preview subsequently changes.
 
 Printing is currently enabled for the tested `IP-200 / V1.36_203dpi` profile, with
 images up to 384 pixels wide. Narrower images are padded with white on the right to
@@ -123,8 +127,37 @@ this panel.
 
 When the connection is lost, the application clears device information; the reason
 remains in the information panel and history. Use the button to reconnect. Leaving
-the page also closes the connection. Picker cancellation, access denial, and
-timeouts are handled separately.
+the tab that owns the Bluetooth connection also closes it. Picker cancellation,
+access denial, and timeouts are handled separately.
+
+### Sharing the connection between tabs
+
+Connect once and keep that tab open. Other tabs discover it automatically and show
+“Connected via another tab”; their print buttons send jobs through that connection
+without another device picker. Queued and completed job indicators belong to the
+tab that submitted the job. Closing a follower tab does not disconnect the printer
+or cancel submitted jobs. The explicit **Disconnect** action
+disconnects the printer for every tab and cancels unfinished jobs.
+
+Sharing requires the same browser profile, origin (scheme, host, and port), and
+application base path. English and Russian pages share a connection. HTTP and
+HTTPS dev URLs, different ports, and private browsing profiles do not. If
+BroadcastChannel or Web Locks is unavailable, the application uses a local
+connection as before.
+
+`SharedPeriPageClient` wraps the existing `PeriPageClient`. It uses
+[BroadcastChannel](https://developer.chrome.com/blog/broadcastchannel) for state
+and raster messages, and [Web Locks](https://www.w3.org/TR/web-locks/) to allow one
+owner and observe its disappearance without heartbeat timeouts. The channel is
+versioned and scoped to the deployment base path. Commands carry a session ID and
+request ID; duplicate and expired deliveries cannot trigger another print.
+
+The [Web Bluetooth API](https://webbluetoothcg.github.io/web-bluetooth/) is exposed
+to windows, so the BLE connection remains in its original tab. Closing or
+reloading that tab loses the connection; unfinished jobs fail without automatic
+reconnection or reprinting. If the browser suspends the owner, accepted jobs may
+wait until it resumes. Keep it open during a batch. Restoring a follower from the
+browser's page cache discovers the current connection again.
 
 The client in `src/lib/peripagejs/` uses the A6 BLE protocol: service `FF00`,
 responses on `FF01`, writes to `FF02`, and a subscription to `FF03`. Queries run
@@ -148,7 +181,10 @@ Manual check: connect the printer, refresh information, disconnect with the butt
 reconnect, and turn the printer off. The last step should restore the connection
 button and clear device information. “Connection lost” should appear in the history.
 Automated tests exercise these transitions with simulated Bluetooth, including late
-responses and cancellation of an incomplete connection.
+responses and cancellation of an incomplete connection. Sharing tests use real
+browser channels and locks, including owner loss, duplicate deliveries, and
+concurrent jobs. Full-page Chromium tests open multiple tabs and simulate only BLE
+to verify a single chooser, user activation, queueing, and closing either tab.
 
 ## Static build
 
