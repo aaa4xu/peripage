@@ -12,6 +12,7 @@ import {
 	TemplateError
 } from '$lib/label/template';
 import { exampleTemplate } from '$lib/label/example';
+import fullWidthHomebox from '$lib/label/homebox-full-width.json';
 import resistors from '$lib/label/resistors.json';
 
 vi.mock('$app/navigation', () => ({
@@ -107,7 +108,7 @@ describe('template preview and print lifecycle', () => {
 	});
 });
 
-describe('text layer editor', () => {
+describe('label content editor', () => {
 	it('updates rotated text and the shared link, then prints only the new raster', async () => {
 		const template = parseTemplate(resistors);
 		changeHash(encodeTemplateHash(template));
@@ -116,7 +117,7 @@ describe('text layer editor', () => {
 		const view = render(Page);
 		const print = view.getByRole('button', { name: 'Print', exact: true });
 		await expect.element(print).toBeEnabled();
-		await view.getByRole('button', { name: 'Edit text' }).click();
+		await view.getByRole('button', { name: 'Edit label' }).click();
 		const input = view.getByRole('textbox', { name: 'Text 3', exact: true });
 		await expect.element(input).toHaveValue('680kΩ');
 		await input.fill('47Ω');
@@ -145,7 +146,7 @@ describe('text layer editor', () => {
 		changeHash(encodeTemplateHash(template));
 		vi.mocked(renderTemplate).mockResolvedValue(ready);
 		const view = render(Page);
-		await view.getByRole('button', { name: 'Edit text' }).click();
+		await view.getByRole('button', { name: 'Edit label' }).click();
 		const input = view.getByRole('textbox', { name: 'Text 1', exact: true });
 		await input.fill('');
 		const expected = {
@@ -157,10 +158,10 @@ describe('text layer editor', () => {
 		changeHash(encodeTemplateHash(parseTemplate(resistors)));
 		await expect.element(input).toHaveValue('Resistor 0.25w');
 		changeHash('#template=invalid');
-		await expect.element(view.getByRole('button', { name: 'Edit text' })).not.toBeInTheDocument();
+		await expect.element(view.getByRole('button', { name: 'Edit label' })).not.toBeInTheDocument();
 		expect(view.container.querySelector('input')).toBeNull();
 		changeHash(hash());
-		await expect.element(view.getByRole('button', { name: 'Edit text' })).not.toBeInTheDocument();
+		await expect.element(view.getByRole('button', { name: 'Edit label' })).not.toBeInTheDocument();
 	});
 
 	it('keeps the newest edit when earlier renders finish later', async () => {
@@ -174,7 +175,7 @@ describe('text layer editor', () => {
 		const view = render(Page);
 		const print = view.getByRole('button', { name: 'Print', exact: true });
 		await expect.element(print).toBeEnabled();
-		await view.getByRole('button', { name: 'Edit text' }).click();
+		await view.getByRole('button', { name: 'Edit label' }).click();
 		const input = view.getByRole('textbox', { name: 'Text 2', exact: true });
 		await input.fill('10Ω');
 		await input.fill('22Ω');
@@ -185,6 +186,75 @@ describe('text layer editor', () => {
 		await first.promise;
 		await tick();
 		await expect.element(input).toHaveValue('22Ω');
+		await print.click();
+		expect(SharedPeriPageClient.prototype.print).toHaveBeenCalledWith(latest);
+	});
+
+	it('edits the QR URL, preserves other layers, and prints only the updated preview', async () => {
+		const template = parseTemplate(fullWidthHomebox);
+		changeHash(encodeTemplateHash(template));
+		const pending = deferred();
+		vi.mocked(renderTemplate).mockResolvedValueOnce(ready).mockReturnValueOnce(pending.promise);
+		const view = render(Page);
+		const print = view.getByRole('button', { name: 'Print', exact: true });
+		await expect.element(print).toBeEnabled();
+		await view.getByRole('button', { name: 'Edit label' }).click();
+		const input = view.getByRole('textbox', { name: 'QR URL 1', exact: true });
+		await expect.element(input).toHaveValue('HTTPS://HB.JJFF.CLOUD/A/000014');
+		const url = 'https://example.com/Assets/000015?name=Mixed&count=2#details';
+		await input.fill(url);
+		await expect.element(print).toBeDisabled();
+		expect(view.container.querySelector('canvas')).toBeNull();
+		const expected = {
+			...template,
+			layers: template.layers.map((layer) =>
+				layer.type === 'qr' ? { ...layer, text: url } : layer
+			)
+		};
+		expect(decodeTemplateHash(location.hash)).toEqual(expected);
+		expect(renderTemplate).toHaveBeenLastCalledWith(expected);
+		const language = view.container.querySelector<HTMLAnchorElement>('nav a[href^="/ru/"]')!;
+		expect(new URL(language.href).hash).toBe(location.hash);
+		const latest = { ...ready, data: Uint8Array.of(0x42) };
+		pending.resolve(latest);
+		await expect.element(print).toBeEnabled();
+		await print.click();
+		expect(SharedPeriPageClient.prototype.print).toHaveBeenCalledWith(latest);
+	});
+
+	it('edits individual QR-only layers and recovers from an empty URL without printing stale data', async () => {
+		const original = exampleTemplate();
+		const qr = original.layers.find((layer) => layer.type === 'qr')!;
+		const template = { ...original, layers: [{ ...qr, x: 0 }, qr] };
+		changeHash(encodeTemplateHash(template));
+		const pending = deferred();
+		vi.mocked(renderTemplate).mockResolvedValueOnce(ready).mockReturnValueOnce(pending.promise);
+		const view = render(Page);
+		const print = view.getByRole('button', { name: 'Print', exact: true });
+		await expect.element(print).toBeEnabled();
+		await view.getByRole('button', { name: 'Edit label' }).click();
+		const first = view.getByRole('textbox', { name: 'QR URL 1', exact: true });
+		const second = view.getByRole('textbox', { name: 'QR URL 2', exact: true });
+		await second.fill('https://example.com/second');
+		const savedHash = location.hash;
+		await second.fill('');
+		await expect.element(second).toHaveValue('');
+		await expect.element(first).toHaveValue(qr.text);
+		await expect.element(print).toBeDisabled();
+		expect(location.hash).toBe(savedHash);
+		pending.resolve(ready);
+		await pending.promise;
+		await tick();
+		await expect.element(print).toBeDisabled();
+		expect(view.container.querySelector('canvas')).toBeNull();
+		const latest = { ...ready, data: Uint8Array.of(0x24) };
+		vi.mocked(renderTemplate).mockResolvedValueOnce(latest);
+		await second.fill('https://example.com/recovered');
+		await expect.element(print).toBeEnabled();
+		expect(decodeTemplateHash(location.hash)).toEqual({
+			...template,
+			layers: [template.layers[0], { ...qr, text: 'https://example.com/recovered' }]
+		});
 		await print.click();
 		expect(SharedPeriPageClient.prototype.print).toHaveBeenCalledWith(latest);
 	});

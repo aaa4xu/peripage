@@ -32,6 +32,11 @@
 		template?.layers.flatMap((layer, index) => (layer.type === 'text' ? [{ layer, index }] : [])) ??
 			[]
 	);
+	const qrLayers = $derived(
+		template?.layers.flatMap((layer, index) => (layer.type === 'qr' ? [{ layer, index }] : [])) ??
+			[]
+	);
+	const hasEditableLayers = $derived(textLayers.length > 0 || qrLayers.length > 0);
 	let printError = $state(false);
 	let bluetoothAvailable = $state(false);
 	let preview = $state.raw<{
@@ -104,12 +109,12 @@
 		}
 	}
 
-	function editText(index: number, text: string) {
+	function editLayerText(index: number, text: string) {
 		if (!template) return;
 		template = {
 			...template,
 			layers: template.layers.map((layer, i) =>
-				i === index && layer.type === 'text' ? { ...layer, text } : layer
+				i === index && (layer.type === 'text' || layer.type === 'qr') ? { ...layer, text } : layer
 			)
 		};
 		try {
@@ -177,8 +182,8 @@
 <div class="app-shell">
 	<PrinterBar {hash} {client} {printer} />
 	<main aria-label={m.preview_title()}>
-		<div class="workspace" class:editing={editing && textLayers.length > 0}>
-			{#if editing && textLayers.length > 0}
+		<div class="workspace" class:editing={editing && hasEditableLayers}>
+			{#if editing && hasEditableLayers}
 				<aside id="label-text-editor" class="text-editor" aria-labelledby="text-editor-heading">
 					<h2 id="text-editor-heading">{m.editor_title()}</h2>
 					<p>{m.editor_hint()}</p>
@@ -190,7 +195,23 @@
 								value={layer.text}
 								maxlength="1024"
 								spellcheck="false"
-								oninput={(event) => editText(index, event.currentTarget.value)}
+								oninput={(event) => editLayerText(index, event.currentTarget.value)}
+							/>
+						</label>
+					{/each}
+					{#each qrLayers as { layer, index }, i (index)}
+						<label>
+							<span>{m.editor_qr_url({ number: i + 1 })}</span>
+							<input
+								type="text"
+								inputmode="url"
+								value={layer.text}
+								maxlength="2048"
+								autocapitalize="off"
+								autocomplete="off"
+								spellcheck="false"
+								required
+								oninput={(event) => editLayerText(index, event.currentTarget.value)}
 							/>
 						</label>
 					{/each}
@@ -228,7 +249,7 @@
 			{#if preview.raster}<span class="dimensions"
 					>{preview.raster.width} × {preview.raster.height} px</span
 				>{/if}
-			{#if textLayers.length > 0}
+			{#if hasEditableLayers}
 				<button
 					class="edit-button"
 					aria-expanded={editing}
