@@ -3,6 +3,8 @@ import jsQR from 'jsqr';
 import { a6Raster, type Raster } from '$lib/peripagejs';
 import { exampleTemplate } from './example';
 import { renderTemplate } from './render';
+import fullWidthHomebox from './homebox-full-width.json';
+import { parseTemplate } from './template';
 import type { LabelTemplate, TextLayer } from './template';
 
 function black(raster: Raster, x: number, y: number): boolean {
@@ -53,6 +55,54 @@ describe('label rendering in the browser', () => {
 		expect(black(raster, 335, 106)).toBe(true);
 		expect(black(raster, 150, 50)).toBe(false);
 	});
+
+	it.each(['HTTPS://HB.JJFF.CLOUD/A/000014', 'https://example.com/Parts/000015?size=M'])(
+		'balances measured paper margins with a 16-dot right inset and keeps the QR readable: %s',
+		async (url) => {
+			const template = parseTemplate({
+				...fullWidthHomebox,
+				layers: fullWidthHomebox.layers.map((layer) =>
+					layer.type === 'qr' ? { ...layer, text: url } : layer
+				)
+			});
+			const raster = await renderTemplate(template);
+			expect(
+				template.layers.filter((layer) => layer.type === 'text').map((layer) => layer.x)
+			).toEqual([0, 0, 0]);
+			expect([raster.width, raster.height, raster.data.length]).toEqual([384, 132, 6336]);
+			expect(Array.from({ length: 100 }, (_, i) => black(raster, 367, 16 + i)).some(Boolean)).toBe(
+				true
+			);
+			if (url === 'HTTPS://HB.JJFF.CLOUD/A/000014') {
+				// The bottom-right finder ends 16 dots before the edge, at four dots per module.
+				expect(
+					Array.from({ length: 28 }, (_, i) => black(raster, 367, 88 + i)).every(Boolean)
+				).toBe(true);
+				expect(
+					Array.from({ length: 28 }, (_, i) => black(raster, 340 + i, 115)).every(Boolean)
+				).toBe(true);
+			}
+			expect(black(raster, 367, 116)).toBe(false);
+			expect(black(raster, 267, 16)).toBe(false);
+			expect(
+				Array.from({ length: 16 * 130 }, (_, i) =>
+					black(raster, 368 + (i % 16), 1 + Math.floor(i / 16))
+				).some(Boolean)
+			).toBe(false);
+			// Model the unprintable white strip on either side of the actual paper.
+			const margin = 16;
+			const width = raster.width + margin * 2;
+			const pixels = new Uint8ClampedArray(width * raster.height * 4).fill(255);
+			const source = rgba(raster);
+			for (let y = 0; y < raster.height; y++)
+				pixels.set(
+					source.subarray(y * raster.width * 4, (y + 1) * raster.width * 4),
+					(y * width + margin) * 4
+				);
+			expect(jsQR(pixels, width, raster.height)?.data).toBe(url);
+			expect(a6Raster(raster).body).toEqual(raster.data);
+		}
+	);
 
 	it('uses the requested font size for long text, clipping it to the block', async () => {
 		const text: TextLayer = {

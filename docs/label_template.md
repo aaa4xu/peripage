@@ -148,6 +148,40 @@ are not bit-for-bit identical. The example keeps fixed sizes; set any text layer
 The Homebox API, credentials, and field selection logic are outside this format's
 scope.
 
+## Homebox at full printable width
+
+[`src/lib/label/homebox-full-width.json`](../src/lib/label/homebox-full-width.json)
+is an additional Homebox layout with a **384×132** canvas (approximately
+48×16.5 mm at 203 dpi). It scales the original 288×99 label area by **4/3** to
+fill the A6's 384-dot printable width. The original canvas's white outer margins
+are removed: coordinates are measured from the original frame origin `(48, 8)`
+before scaling, then rounded to whole dots.
+
+The text and QR modules are enlarged proportionally. Fixed font sizes are
+**32, 20, 20**. The text blocks start at **x = 0** and extend to `x = 244`.
+The QR matrix is **100×100**, at **(268, 16)**, with its rightmost column
+at `x = 367`. The example URL still produces 25×25 modules at 4×4 dots each,
+retaining error correction `L`, rotation `270`, and the uppercase Homebox URL.
+Its `quietZone: 0` removes the embedded white border, and `align: "right"` keeps
+replacement QR values aligned to that same column. The current printer and tape
+produced measured paper margins of **3.2 mm on the left** and **1.2 mm on the right**
+when both sides of the content reached the canvas edges. A **16-dot right inset**
+(approximately **2 mm** at 203 dpi) compensates for this difference, giving
+expected content margins of approximately **3.2 mm on both sides**. The text
+still starts at the left canvas edge. Whitespace within the layout and on the
+paper surrounds the QR. Vertical positions and font sizes are preserved.
+As with the original, use `fontSize: "auto"` if replacement text should fit its block.
+
+The background contains only two horizontal cut lines across the full width,
+at `y = 0` and `y = 131`. Each remains **one dot thick**. There are no vertical
+lines or beveled corners. The PNG is embedded at its native 384×132 resolution,
+so image scaling cannot thicken the lines. Only the top and bottom need trimming.
+
+![Full-width Homebox print raster](homebox-full-width/print.png)
+
+To create a link, import this JSON instead of `example.json` in the example below.
+The original Homebox and resistor templates remain available separately.
+
 ## Resistors in a three-compartment Gridfinity bin
 
 [`src/lib/label/resistors.json`](../src/lib/label/resistors.json) uses the same

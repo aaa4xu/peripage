@@ -1,0 +1,56 @@
+{
+	"version": 1,
+	"width": 384,
+	"height": 132,
+	"layers": [
+		{
+			"type": "image",
+			"x": 0,
+			"y": 0,
+			"width": 384,
+			"height": 132,
+			"src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAACECAAAAAC8SqPBAAAAyElEQVR42u3RMQEAAAyDsPo3vcngCRLIprZTGgAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABACAAAAQAgAAAEAAAAgBAAAAIAAABAADAAgAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAEAIAAABACAAAAQAAACAEAAAAgAAAHoAdT2bb9IX9FBptQAAAAASUVORK5CYII="
+		},
+		{
+			"type": "text",
+			"x": 0,
+			"y": 12,
+			"width": 244,
+			"height": 47,
+			"text": "Резисторы",
+			"fontSize": 32,
+			"fontWeight": 700
+		},
+		{
+			"type": "text",
+			"x": 0,
+			"y": 55,
+			"width": 244,
+			"height": 35,
+			"text": "10 кОм · 0,25 Вт",
+			"fontSize": 20,
+			"fontWeight": 500
+		},
+		{
+			"type": "text",
+			"x": 0,
+			"y": 85,
+			"width": 244,
+			"height": 35,
+			"text": "000-014",
+			"fontSize": 20,
+			"fontWeight": 500
+		},
+		{
+			"type": "qr",
+			"x": 268,
+			"y": 16,
+			"size": 100,
+			"text": "HTTPS://HB.JJFF.CLOUD/A/000014",
+			"errorCorrection": "L",
+			"quietZone": 0,
+			"align": "right",
+			"rotation": 270
+		}
+	]
+}

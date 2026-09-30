@@ -66,6 +66,11 @@ corners, three lines on the left, and a QR code on the right. The complete examp
 is in [`src/lib/label/example.json`](src/lib/label/example.json); field descriptions
 and link generation are covered in the [format documentation](docs/label_template.md).
 
+An additional [full-width Homebox template](src/lib/label/homebox-full-width.json)
+uses a 384×132 canvas, proportionally enlarged text and QR, and only two horizontal
+one-dot cut lines. Its geometry and preview are in the
+[format documentation](docs/label_template.md#homebox-at-full-printable-width).
+
 ```ts
 import { encodeTemplateHash, parseTemplate } from './src/lib/label/template';
 import example from './src/lib/label/example.json';
