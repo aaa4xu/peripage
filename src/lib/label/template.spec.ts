@@ -46,6 +46,12 @@ describe('JSON label templates', () => {
 		expect(decodeTemplateHash(encodeTemplateHash(template))).toEqual(template);
 	});
 
+	it.each([0, 90, 180, 270])('preserves text rotation %i through a template link', (rotation) => {
+		const template = parseTemplate({ ...label, layers: [{ ...text, rotation }] });
+		expect(template.layers[0]).toMatchObject({ rotation });
+		expect(decodeTemplateHash(encodeTemplateHash(template))).toEqual(template);
+	});
+
 	it('keeps blank text lines and supports an empty canvas', () => {
 		expect(parseTemplate({ ...label, layers: [{ ...text, text: '' }] }).layers[0]).toMatchObject({
 			text: ''
@@ -74,6 +80,8 @@ describe('JSON label templates', () => {
 		{ ...label, layers: [{ ...text, minFontSize: 8 }] },
 		{ ...label, layers: [{ ...text, fontWeight: 900 }] },
 		{ ...label, layers: [{ ...text, align: 'justify' }] },
+		{ ...label, layers: [{ ...text, rotation: 45 }] },
+		{ ...label, layers: [{ ...text, rotation: '90' }] },
 		{ ...label, layers: [{ ...text, text: 'two\nlines' }] },
 		{ ...label, layers: [{ type: 'qr', x: 0, y: 0, size: 99, text: '', rotation: 45 }] },
 		{ ...label, layers: [{ type: 'html', html: '<b>label</b>' }] },

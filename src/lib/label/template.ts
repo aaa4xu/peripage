@@ -18,6 +18,8 @@ export interface TextLayer extends Box {
 	fontSize: number | 'auto';
 	fontWeight?: 400 | 500 | 700;
 	align?: 'left' | 'center' | 'right';
+	/** Clockwise rotation inside the final, axis-aligned block. */
+	rotation?: 0 | 90 | 180 | 270;
 }
 
 export interface QrLayer {
@@ -155,7 +157,8 @@ export function parseTemplate(value: unknown): LabelTemplate {
 					'text',
 					'fontSize',
 					'fontWeight',
-					'align'
+					'align',
+					'rotation'
 				]);
 				const text = string(layer.text, 1024);
 				contentLength += text.length;
@@ -167,7 +170,8 @@ export function parseTemplate(value: unknown): LabelTemplate {
 					text,
 					fontSize: size,
 					fontWeight: choice(layer.fontWeight, [400, 500, 700] as const),
-					align: choice(layer.align, ['left', 'center', 'right'] as const)
+					align: choice(layer.align, ['left', 'center', 'right'] as const),
+					rotation: choice(layer.rotation, [0, 90, 180, 270] as const)
 				};
 			}
 			case 'qr': {

@@ -67,11 +67,11 @@ change the printout. An empty layer array produces a white canvas.
 
 ## Layers
 
-| Type    | Required fields                                 | Optional fields               |
-| ------- | ----------------------------------------------- | ----------------------------- |
-| `image` | `x`, `y`, `width`, `height`, `src`              | —                             |
-| `text`  | `x`, `y`, `width`, `height`, `text`, `fontSize` | `fontWeight`, `align`         |
-| `qr`    | `x`, `y`, `size`, `text`                        | `errorCorrection`, `rotation` |
+| Type    | Required fields                                 | Optional fields                   |
+| ------- | ----------------------------------------------- | --------------------------------- |
+| `image` | `x`, `y`, `width`, `height`, `src`              | —                                 |
+| `text`  | `x`, `y`, `width`, `height`, `text`, `fontSize` | `fontWeight`, `align`, `rotation` |
+| `qr`    | `x`, `y`, `size`, `text`                        | `errorCorrection`, `rotation`     |
 
 ### Image
 
@@ -97,6 +97,11 @@ add a separate layer for each line.
 - `fontWeight`: `400`, `500`, or `700`; defaults to `400`.
 - `align`: `left`, `center`, or `right`; defaults to `left`.
 - The line is vertically centered in its block.
+- `rotation`: a clockwise rotation of `0`, `90`, `180`, or `270` degrees; defaults
+  to `0`. The block coordinates and dimensions describe the **final** rectangle
+  on the canvas. At `90` or `270`, text is fitted into a line area whose width and
+  height are swapped, then rotated about the block center. Alignment is relative
+  to the line before rotation; clipping rotates with it.
 - Text is black. The application bundles **Noto Sans Variable**, including Cyrillic.
   Rendering waits for the font to load before enabling printing.
 
@@ -134,6 +139,29 @@ are not bit-for-bit identical. The example keeps fixed sizes; set any text layer
 `fontSize` to `"auto"` to fit replacement text within the same block.
 The Homebox API, credentials, and field selection logic are outside this format's
 scope.
+
+## Resistors in a three-compartment Gridfinity bin
+
+[`src/lib/label/resistors.json`](../src/lib/label/resistors.json) uses the same
+384×115 canvas and 288×99 beveled frame (approximately 36×12.4 mm at 203 dpi).
+It contains a centered, auto-sized `Resistor 0.25w` heading and three equal-width
+blocks with bold `18`-dot nominal text, rotated `90` degrees clockwise.
+
+The printed order is `22Ω`, `680kΩ`, `1Ω` from left to right. Mount the label
+on the left of a horizontal 1×2 bin, rotated `90` degrees **counter-clockwise**:
+the nominal text then reads horizontally, `1Ω`, `680kΩ`, `22Ω` from top to
+bottom. This assumes three compartments per bin. The heading runs vertically
+along the outer edge. Change the four text layers to reuse the layout.
+
+![Print layout and left-side placement](resistor-label/preview.png)
+
+[`resistor-label/print.png`](resistor-label/print.png) is the full 384×115
+monochrome print raster, exported from the application's preview using
+[`resistor-label/template.en.json`](resistor-label/template.en.json). The
+documentation images use the heading `Resistor 0.25 W`. The placement diagram
+is schematic; it does not establish the dimensions of a physical bin or
+its label holder. Load the JSON with `encodeTemplateHash()` as for the Homebox
+example. The existing example button still opens the Homebox label.
 
 ## Preview and printing
 

@@ -32,6 +32,30 @@ async function bounded<T>(operation: Promise<T>): Promise<T> {
 
 function drawText(context: CanvasRenderingContext2D, layer: TextLayer): void {
 	if (!layer.text) return;
+	const rotation = layer.rotation ?? 0;
+	if (rotation === 0) return drawTextLine(context, layer);
+	const sideways = rotation === 90 || rotation === 270;
+	const width = sideways ? layer.height : layer.width;
+	const height = sideways ? layer.width : layer.height;
+	// Rotate the rendered pixels so browser font hinting cannot change the glyphs.
+	const line = document.createElement('canvas');
+	line.width = width;
+	line.height = height;
+	const lineContext = line.getContext('2d');
+	if (!lineContext) throw new TemplateError('render');
+	drawTextLine(lineContext, { ...layer, x: 0, y: 0, width, height });
+	context.save();
+	try {
+		context.translate(layer.x + layer.width / 2, layer.y + layer.height / 2);
+		context.rotate((rotation * Math.PI) / 180);
+		context.drawImage(line, -width / 2, -height / 2);
+	} finally {
+		context.restore();
+	}
+}
+
+function drawTextLine(context: CanvasRenderingContext2D, layer: TextLayer): void {
+	if (!layer.text) return;
 	const automatic = layer.fontSize === 'auto';
 	const measure = (size: number) => {
 		context.font = font(layer, size);

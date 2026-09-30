@@ -152,6 +152,59 @@ describe('label rendering in the browser', () => {
 		).rejects.toThrow('dimensions');
 	});
 
+	it.each([90, 180, 270] as const)(
+		'rotates fitted text %i degrees clockwise without losing or adding ink',
+		async (rotation) => {
+			const text: TextLayer = {
+				type: 'text',
+				x: 8,
+				y: 8,
+				width: 112,
+				height: 44,
+				text: '10 Ω',
+				fontSize: 'auto',
+				fontWeight: 700,
+				align: 'center'
+			};
+			const source = await renderTemplate({
+				version: 1,
+				width: 128,
+				height: 60,
+				layers: [text]
+			});
+			const sideways = rotation !== 180;
+			const width = sideways ? text.height : text.width;
+			const height = sideways ? text.width : text.height;
+			const rotated = await renderTemplate({
+				version: 1,
+				width: width + 16,
+				height: height + 16,
+				layers: [{ ...text, width, height, rotation }]
+			});
+			const expected = Array.from({ length: width * height }, (_, i) => {
+				const x = i % width,
+					y = Math.floor(i / width);
+				const sx = rotation === 90 ? y : rotation === 180 ? text.width - 1 - x : text.width - 1 - y;
+				const sy =
+					rotation === 90 ? text.height - 1 - x : rotation === 180 ? text.height - 1 - y : x;
+				return black(source, text.x + sx, text.y + sy);
+			});
+			expect(expected.some(Boolean)).toBe(true);
+			expect(
+				Array.from({ length: width * height }, (_, i) =>
+					black(rotated, 8 + (i % width), 8 + Math.floor(i / width))
+				)
+			).toEqual(expected);
+			expect(
+				Array.from({ length: rotated.width * rotated.height }, (_, i) => {
+					const x = i % rotated.width,
+						y = Math.floor(i / rotated.width);
+					return (x < 8 || x >= 8 + width || y < 8 || y >= 8 + height) && black(rotated, x, y);
+				}).some(Boolean)
+			).toBe(false);
+		}
+	);
+
 	it('renders Cyrillic and leaves explicitly empty text rows blank', async () => {
 		const text: TextLayer = {
 			type: 'text',
