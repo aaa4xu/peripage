@@ -111,9 +111,16 @@ function drawQr(context: CanvasRenderingContext2D, layer: QrLayer): void {
 			errorCorrectionLevel: layer.errorCorrection ?? 'M'
 		});
 		const count = modules.size;
-		const scale = Math.floor(layer.size / (count + 8));
+		const quietZone = layer.quietZone ?? 4;
+		const scale = Math.floor(layer.size / (count + quietZone * 2));
 		if (scale < 1) throw new TemplateError('qr');
-		const inset = Math.floor((layer.size - (count + 8) * scale) / 2) + 4 * scale;
+		const inset = Math.floor((layer.size - count * scale) / 2);
+		const insetX =
+			layer.align === 'right'
+				? layer.size - (count + quietZone) * scale
+				: layer.align === 'left'
+					? quietZone * scale
+					: inset;
 		context.fillStyle = '#000';
 		for (let y = 0; y < count; y++) {
 			for (let x = 0; x < count; x++) {
@@ -134,7 +141,7 @@ function drawQr(context: CanvasRenderingContext2D, layer: QrLayer): void {
 						dy = count - 1 - x;
 						break;
 				}
-				context.fillRect(layer.x + inset + dx * scale, layer.y + inset + dy * scale, scale, scale);
+				context.fillRect(layer.x + insetX + dx * scale, layer.y + inset + dy * scale, scale, scale);
 			}
 		}
 	} catch {

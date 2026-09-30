@@ -52,6 +52,34 @@ describe('JSON label templates', () => {
 		expect(decodeTemplateHash(encodeTemplateHash(template))).toEqual(template);
 	});
 
+	it.each([0, 4])('preserves QR quietZone %i through a template link', (quietZone) => {
+		const template = parseTemplate({
+			...label,
+			layers: [
+				{
+					type: 'qr',
+					x: 0,
+					y: 0,
+					size: 100,
+					text: 'https://example.com',
+					quietZone,
+					align: 'right'
+				}
+			]
+		});
+		expect(template.layers[0]).toMatchObject({ quietZone, align: 'right' });
+		expect(decodeTemplateHash(encodeTemplateHash(template))).toEqual(template);
+	});
+
+	it.each([-1, 1.5, '0', 4097])('rejects invalid QR quietZone %j', (quietZone) => {
+		expect(() =>
+			parseTemplate({
+				...label,
+				layers: [{ type: 'qr', x: 0, y: 0, size: 100, text: 'https://example.com', quietZone }]
+			})
+		).toThrow(TemplateError);
+	});
+
 	it('keeps blank text lines and supports an empty canvas', () => {
 		expect(parseTemplate({ ...label, layers: [{ ...text, text: '' }] }).layers[0]).toMatchObject({
 			text: ''
@@ -84,6 +112,7 @@ describe('JSON label templates', () => {
 		{ ...label, layers: [{ ...text, rotation: '90' }] },
 		{ ...label, layers: [{ ...text, text: 'two\nlines' }] },
 		{ ...label, layers: [{ type: 'qr', x: 0, y: 0, size: 99, text: '', rotation: 45 }] },
+		{ ...label, layers: [{ type: 'qr', x: 0, y: 0, size: 99, text: 'QR', align: 'justify' }] },
 		{ ...label, layers: [{ type: 'html', html: '<b>label</b>' }] },
 		{ ...label, layers: Array(65).fill(text) }
 	])('rejects invalid dimensions, fields and layer definitions: %j', (input) => {

@@ -26,10 +26,14 @@ export interface QrLayer {
 	type: 'qr';
 	x: number;
 	y: number;
-	/** Square including a four-module quiet zone; module size is always an integer. */
+	/** Square including the quiet zone; module size is always an integer. */
 	size: number;
 	text: string;
 	errorCorrection?: 'L' | 'M' | 'Q' | 'H';
+	/** Blank modules on each side. Defaults to four; zero uses surrounding whitespace. */
+	quietZone?: number;
+	/** Horizontal alignment inside the square. Defaults to center. */
+	align?: 'left' | 'center' | 'right';
 	/** Clockwise rotation, in degrees. */
 	rotation?: 0 | 90 | 180 | 270;
 }
@@ -182,6 +186,8 @@ export function parseTemplate(value: unknown): LabelTemplate {
 					'size',
 					'text',
 					'errorCorrection',
+					'quietZone',
+					'align',
 					'rotation'
 				]);
 				const size = integer(layer.size);
@@ -196,6 +202,8 @@ export function parseTemplate(value: unknown): LabelTemplate {
 					size,
 					text,
 					errorCorrection: choice(layer.errorCorrection, ['L', 'M', 'Q', 'H'] as const),
+					quietZone: layer.quietZone === undefined ? undefined : integer(layer.quietZone, 0),
+					align: choice(layer.align, ['left', 'center', 'right'] as const),
 					rotation: choice(layer.rotation, [0, 90, 180, 270] as const)
 				};
 			}

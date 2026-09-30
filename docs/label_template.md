@@ -67,11 +67,11 @@ change the printout. An empty layer array produces a white canvas.
 
 ## Layers
 
-| Type    | Required fields                                 | Optional fields                   |
-| ------- | ----------------------------------------------- | --------------------------------- |
-| `image` | `x`, `y`, `width`, `height`, `src`              | —                                 |
-| `text`  | `x`, `y`, `width`, `height`, `text`, `fontSize` | `fontWeight`, `align`, `rotation` |
-| `qr`    | `x`, `y`, `size`, `text`                        | `errorCorrection`, `rotation`     |
+| Type    | Required fields                                 | Optional fields                                     |
+| ------- | ----------------------------------------------- | --------------------------------------------------- |
+| `image` | `x`, `y`, `width`, `height`, `src`              | —                                                   |
+| `text`  | `x`, `y`, `width`, `height`, `text`, `fontSize` | `fontWeight`, `align`, `rotation`                   |
+| `qr`    | `x`, `y`, `size`, `text`                        | `errorCorrection`, `rotation`, `quietZone`, `align` |
 
 ### Image
 
@@ -111,13 +111,21 @@ advance.
 
 ### QR
 
-`text` is passed to the encoder unchanged. `size` defines a square including a
-four-module quiet zone on each side. The encoder selects the smallest suitable
+`text` is passed to the encoder unchanged. `size` defines a square including the
+quiet zone on each side. `quietZone` is a non-negative integer measured in modules
+and defaults to `4`. Set it to `0` when surrounding whitespace provides the quiet
+zone, such as the unprintable paper margin beside an edge-aligned QR code.
+The encoder selects the smallest suitable
 version and an integer number of dots per module, then centers the code in the
 square. There is no fractional scaling or smoothing. If even one pixel per module
 will not fit, the template reports an error.
 
 `errorCorrection` is `L`, `M`, `Q`, or `H`; defaults to `M`.
+`align` is `left`, `center`, or `right`; defaults to `center`. It controls the
+horizontal placement of the matrix within the square, retaining the requested
+quiet zone at the aligned edge. Vertical placement remains centered. With
+`quietZone: 0` and `align: "right"`, the last matrix column reaches the right edge
+even when a replacement URL changes the QR version or module size.
 `rotation` is a clockwise rotation of `0`, `90`, `180`, or `270` degrees; defaults
 to `0`. The QR layer draws black modules; its remaining pixels are transparent.
 
