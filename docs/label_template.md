@@ -145,7 +145,7 @@ scope.
 [`src/lib/label/resistors.json`](../src/lib/label/resistors.json) uses the same
 384×115 canvas and 288×99 beveled frame (approximately 36×12.4 mm at 203 dpi).
 It contains a centered, auto-sized `Resistor 0.25w` heading and three equal-width
-blocks with bold `18`-dot nominal text, rotated `90` degrees clockwise.
+blocks with regular `18`-dot nominal text (`fontWeight: 400`), rotated `90` degrees clockwise.
 
 The printed order is `22Ω`, `680kΩ`, `1Ω` from left to right. Mount the label
 on the left of a horizontal 1×2 bin, rotated `90` degrees **counter-clockwise**:

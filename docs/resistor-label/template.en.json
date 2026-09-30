@@ -30,7 +30,7 @@
 			"height": 58,
 			"text": "22Ω",
 			"fontSize": 18,
-			"fontWeight": 700,
+			"fontWeight": 400,
 			"align": "center",
 			"rotation": 90
 		},
@@ -42,7 +42,7 @@
 			"height": 58,
 			"text": "680kΩ",
 			"fontSize": 18,
-			"fontWeight": 700,
+			"fontWeight": 400,
 			"align": "center",
 			"rotation": 90
 		},
@@ -54,7 +54,7 @@
 			"height": 58,
 			"text": "1Ω",
 			"fontSize": 18,
-			"fontWeight": 700,
+			"fontWeight": 400,
 			"align": "center",
 			"rotation": 90
 		}
