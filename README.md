@@ -81,6 +81,12 @@ preview; an invalid template clears the previous image, and a late load result
 cannot replace a newer image. The link is preserved when switching languages.
 Hash data is not sent to the HTTP server.
 
+For templates with text layers, “Edit text” opens one field per layer. Changes
+immediately update the preview and replace the template in the page link, so
+reloading or sharing the link keeps the edited text. Layer positions, fonts,
+rotations, images, and QR payloads are preserved. Printing waits for the updated
+preview to finish rendering.
+
 The preview does not require a printer connection. It fills the available area
 below the top bar, preserves the aspect ratio, and displays individual raster dots.
 The printer icon button is in the bottom-right corner.

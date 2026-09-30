@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { base } from '$app/paths';
+	import type { ResolvedPathname } from '$app/types';
 	import { m } from '$lib/paraglide/messages';
 	import PrinterBar from '$lib/components/PrinterBar.svelte';
 	import {
@@ -15,6 +17,7 @@
 		TemplateError,
 		decodeTemplateHash,
 		encodeTemplateHash,
+		type LabelTemplate,
 		type TemplateErrorCode
 	} from '$lib/label/template';
 	import { exampleTemplate } from '$lib/label/example';
@@ -23,6 +26,12 @@
 	const client = new SharedPeriPageClient(base || '/');
 	let printer = $state.raw(client.state);
 	let hash = $state('');
+	let template = $state.raw<LabelTemplate | null>(null);
+	let editing = $state(false);
+	const textLayers = $derived(
+		template?.layers.flatMap((layer, index) => (layer.type === 'text' ? [{ layer, index }] : [])) ??
+			[]
+	);
 	let printError = $state(false);
 	let bluetoothAvailable = $state(false);
 	let preview = $state.raw<{
@@ -77,9 +86,10 @@
 		renderedHash = hash;
 		const current = ++generation;
 		printError = false;
+		template = null;
 		preview = { raster: null, error: null, loading: false };
 		try {
-			const template = decodeTemplateHash(hash);
+			template = decodeTemplateHash(hash);
 			if (!template) return;
 			preview = { raster: null, error: null, loading: true };
 			const raster = await renderTemplate(template);
@@ -91,6 +101,33 @@
 					error: error instanceof TemplateError ? error.code : 'render',
 					loading: false
 				};
+		}
+	}
+
+	function editText(index: number, text: string) {
+		if (!template) return;
+		template = {
+			...template,
+			layers: template.layers.map((layer, i) =>
+				i === index && layer.type === 'text' ? { ...layer, text } : layer
+			)
+		};
+		try {
+			// The current pathname already includes the locale and deployment base.
+			replaceState(
+				`${page.url.pathname}${page.url.search}${encodeTemplateHash(template)}` as ResolvedPathname,
+				page.state
+			);
+			void readHash();
+		} catch (error) {
+			generation++;
+			renderedHash = undefined;
+			printError = false;
+			preview = {
+				raster: null,
+				error: error instanceof TemplateError ? error.code : 'render',
+				loading: false
+			};
 		}
 	}
 
@@ -140,37 +177,65 @@
 <div class="app-shell">
 	<PrinterBar {hash} {client} {printer} />
 	<main aria-label={m.preview_title()}>
-		<div class="preview-stage">
-			{#if preview.raster}
-				<RasterPreview raster={preview.raster} />
-			{:else}
-				<div class="empty-state">
-					<svg class="image-icon" viewBox="0 0 48 48" aria-hidden="true">
-						<rect x="7" y="7" width="34" height="34" rx="4" />
-						<circle cx="17" cy="17" r="3" />
-						<path d="m8 34 10-10 7 7 7-10 9 11" />
-					</svg>
-					{#if preview.loading}
-						<p role="status">{m.preview_rendering()}</p>
-					{:else if preview.error}
-						<div role="alert">
-							<h1>{m.preview_error_title()}</h1>
-							<p>{errorMessages[preview.error]()}</p>
-						</div>
-					{:else}
-						<h1>{m.preview_empty()}</h1>
-						<p>{m.preview_empty_hint()}</p>
-					{/if}
-					{#if !preview.loading}<button class="example-button" onclick={showExample}
-							>{m.preview_example()}</button
-						>{/if}
-				</div>
+		<div class="workspace" class:editing={editing && textLayers.length > 0}>
+			{#if editing && textLayers.length > 0}
+				<aside id="label-text-editor" class="text-editor" aria-labelledby="text-editor-heading">
+					<h2 id="text-editor-heading">{m.editor_title()}</h2>
+					<p>{m.editor_hint()}</p>
+					{#each textLayers as { layer, index }, i (index)}
+						<label>
+							<span>{m.editor_line({ number: i + 1 })}</span>
+							<input
+								type="text"
+								value={layer.text}
+								maxlength="1024"
+								spellcheck="false"
+								oninput={(event) => editText(index, event.currentTarget.value)}
+							/>
+						</label>
+					{/each}
+				</aside>
 			{/if}
+			<div class="preview-stage">
+				{#if preview.raster}
+					<RasterPreview raster={preview.raster} />
+				{:else}
+					<div class="empty-state">
+						<svg class="image-icon" viewBox="0 0 48 48" aria-hidden="true">
+							<rect x="7" y="7" width="34" height="34" rx="4" />
+							<circle cx="17" cy="17" r="3" />
+							<path d="m8 34 10-10 7 7 7-10 9 11" />
+						</svg>
+						{#if preview.loading}
+							<p role="status">{m.preview_rendering()}</p>
+						{:else if preview.error}
+							<div role="alert">
+								<h1>{m.preview_error_title()}</h1>
+								<p>{errorMessages[preview.error]()}</p>
+							</div>
+						{:else}
+							<h1>{m.preview_empty()}</h1>
+							<p>{m.preview_empty_hint()}</p>
+						{/if}
+						{#if !preview.loading}<button class="example-button" onclick={showExample}
+								>{m.preview_example()}</button
+							>{/if}
+					</div>
+				{/if}
+			</div>
 		</div>
 		<div class="print-controls">
 			{#if preview.raster}<span class="dimensions"
 					>{preview.raster.width} × {preview.raster.height} px</span
 				>{/if}
+			{#if textLayers.length > 0}
+				<button
+					class="edit-button"
+					aria-expanded={editing}
+					aria-controls="label-text-editor"
+					onclick={() => (editing = !editing)}>{m.editor_action()}</button
+				>
+			{/if}
 			<span class="print-hint" class:error={printError || !!printer.error} role="status"
 				>{printHint}</span
 			>
@@ -220,14 +285,58 @@
 		background-image: radial-gradient(#bfc9b8 0.7px, transparent 0.7px);
 		background-size: 16px 16px;
 	}
-	.preview-stage {
+	.workspace {
 		position: absolute;
 		inset: 24px 24px 92px;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 24px;
+	}
+	.workspace.editing {
+		grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+	}
+	.preview-stage {
 		display: grid;
 		place-items: center;
 		min-width: 0;
 		min-height: 0;
 		overflow: auto;
+	}
+	.text-editor {
+		min-width: 0;
+		min-height: 0;
+		padding: 20px;
+		border: 1px solid #dce3d9;
+		border-radius: 12px;
+		background: #fff;
+		overflow: auto;
+	}
+	.text-editor h2 {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 600;
+	}
+	.text-editor p {
+		margin: 8px 0 20px;
+		font-size: 12px;
+	}
+	.text-editor label {
+		display: grid;
+		gap: 6px;
+		margin-top: 16px;
+		font-size: 12px;
+		color: #65735e;
+	}
+	.text-editor input {
+		width: 100%;
+		min-width: 0;
+		padding: 10px;
+		border: 1px solid #cbd6c4;
+		border-radius: 6px;
+		background: #f8faf5;
+		color: #202b25;
+		font: inherit;
+		font-size: 16px;
 	}
 	.empty-state {
 		max-width: 380px;
@@ -267,11 +376,13 @@
 		font-weight: 550;
 		cursor: pointer;
 	}
-	.example-button {
+	.example-button,
+	.edit-button {
 		color: #315d40;
 		background: #f8faf5;
 	}
-	.example-button:hover {
+	.example-button:hover,
+	.edit-button:hover {
 		background: #fff;
 		border-color: #8ca47e;
 	}
@@ -327,8 +438,20 @@
 		stroke-linejoin: round;
 	}
 	@media (max-width: 600px) {
-		.preview-stage {
+		.workspace {
 			inset: 16px 16px 96px;
+			gap: 16px;
+		}
+		.workspace.editing {
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-rows: minmax(120px, 1fr) minmax(0, 1fr);
+		}
+		.workspace.editing .preview-stage {
+			grid-row: 1;
+		}
+		.text-editor {
+			grid-row: 2;
+			padding: 16px;
 		}
 		.print-controls {
 			right: 16px;

@@ -79,5 +79,9 @@
 	"preview_error_image": "Could not read an image layer. Use an embedded PNG image.",
 	"preview_error_qr": "The QR code does not fit its block or contains too much data.",
 	"preview_error_render": "Could not render the label. Check that the fonts and images can be loaded.",
-	"preview_error_size": "The template is too large. Reduce its dimensions, number of layers or embedded images."
+	"preview_error_size": "The template is too large. Reduce its dimensions, number of layers or embedded images.",
+	"editor_action": "Edit text",
+	"editor_title": "Label text",
+	"editor_hint": "Changes appear in the preview and are saved in the page link.",
+	"editor_line": "Text {number}"
 }
